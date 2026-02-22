@@ -18,24 +18,26 @@ import {
   SVG_NS,
   SVG_STAFF_WIDTH,
 } from "../config/constants.js";
+import { appendSvgModel, createSvgElementFromModel } from "./svg-dom-renderer.js";
+import { circle, ellipse, group, line, path, text } from "./staff-model.js";
 
 export function createSvgElement(type, attributes = {}) {
-  const element = document.createElementNS(SVG_NS, type);
-
-  Object.entries(attributes).forEach(([key, value]) => {
-    element.setAttribute(key, value);
+  return createSvgElementFromModel(SVG_NS, {
+    type,
+    attrs: attributes,
+    classNames: [],
+    dataset: {},
+    children: [],
   });
-
-  return element;
 }
 
-export function drawStaffOnSvg(svgElement, middleLineY = MIDDLE_LINE_D3_Y_GENERATED) {
-  svgElement.innerHTML = "";
+export function buildStaffLinesModel(middleLineY = MIDDLE_LINE_D3_Y_GENERATED) {
+  const nodes = [];
 
   for (let i = 0; i < STAFF_LINES_COUNT; i += 1) {
     const y = STAFF_MARGIN_TOP + i * LINE_SPACING;
-    svgElement.appendChild(
-      createSvgElement("line", {
+    nodes.push(
+      line({
         x1: STAFF_MARGIN_LEFT,
         y1: y,
         x2: SVG_STAFF_WIDTH - STAFF_MARGIN_LEFT,
@@ -49,21 +51,21 @@ export function drawStaffOnSvg(svgElement, middleLineY = MIDDLE_LINE_D3_Y_GENERA
   const clefX = STAFF_MARGIN_LEFT + 25;
   const yF3Line = middleLineY - NOTE_PROPERTIES.F3.yFactor * (LINE_SPACING / 2);
 
-  const clefPath = createSvgElement("path", {
-    d: `M ${clefX - 5} ${yF3Line - LINE_SPACING * 1.8} a ${LINE_SPACING * 1.2} ${LINE_SPACING * 1.2} 0 0 0 0 ${LINE_SPACING * 3.6} c ${LINE_SPACING * 0.8} ${LINE_SPACING * 0.5} ${LINE_SPACING * 1.5} ${-LINE_SPACING * 0.5} ${LINE_SPACING * 1.5} ${-LINE_SPACING * 1.5} S ${clefX} ${yF3Line - LINE_SPACING * 1.5} ${clefX - 5} ${yF3Line - LINE_SPACING * 1.8}`,
-    fill: "none",
-    stroke: NOTE_COLOR_DEFAULT,
-    "stroke-width": "2.5",
-  });
-
-  svgElement.appendChild(clefPath);
+  nodes.push(
+    path({
+      d: `M ${clefX - 5} ${yF3Line - LINE_SPACING * 1.8} a ${LINE_SPACING * 1.2} ${LINE_SPACING * 1.2} 0 0 0 0 ${LINE_SPACING * 3.6} c ${LINE_SPACING * 0.8} ${LINE_SPACING * 0.5} ${LINE_SPACING * 1.5} ${-LINE_SPACING * 0.5} ${LINE_SPACING * 1.5} ${-LINE_SPACING * 1.5} S ${clefX} ${yF3Line - LINE_SPACING * 1.5} ${clefX - 5} ${yF3Line - LINE_SPACING * 1.8}`,
+      fill: "none",
+      stroke: NOTE_COLOR_DEFAULT,
+      "stroke-width": "2.5",
+    }),
+  );
 
   const dotRadius = LINE_SPACING * 0.2;
   const yG3Space = middleLineY - NOTE_PROPERTIES.G3.yFactor * (LINE_SPACING / 2);
   const yE3Space = middleLineY - NOTE_PROPERTIES.E3.yFactor * (LINE_SPACING / 2);
 
-  svgElement.appendChild(
-    createSvgElement("circle", {
+  nodes.push(
+    circle({
       cx: clefX + LINE_SPACING * 1.1,
       cy: yG3Space,
       r: dotRadius,
@@ -71,14 +73,21 @@ export function drawStaffOnSvg(svgElement, middleLineY = MIDDLE_LINE_D3_Y_GENERA
     }),
   );
 
-  svgElement.appendChild(
-    createSvgElement("circle", {
+  nodes.push(
+    circle({
       cx: clefX + LINE_SPACING * 1.1,
       cy: yE3Space,
       r: dotRadius,
       fill: NOTE_COLOR_DEFAULT,
     }),
   );
+
+  return nodes;
+}
+
+export function drawStaffOnSvg(svgElement, middleLineY = MIDDLE_LINE_D3_Y_GENERATED) {
+  svgElement.innerHTML = "";
+  appendSvgModel(svgElement, SVG_NS, buildStaffLinesModel(middleLineY));
 }
 
 function getNoteDrawingParams(scientificNoteName) {
@@ -140,15 +149,16 @@ export function getNoteYPosition(scientificNoteName, middleLineY = MIDDLE_LINE_D
   return middleLineY - drawingParams.yFactor * (LINE_SPACING / 2);
 }
 
-function drawLedgerLinesOnSvg(svgElement, middleLineY, cx, yFactor) {
+function buildLedgerLineModel(middleLineY, cx, yFactor) {
+  const nodes = [];
   const ledgerWidth = NOTE_HEAD_RX * 2.5;
   const x1 = cx - ledgerWidth / 2;
   const x2 = cx + ledgerWidth / 2;
   const step = LINE_SPACING / 2;
 
   if (yFactor <= -8) {
-    svgElement.appendChild(
-      createSvgElement("line", {
+    nodes.push(
+      line({
         x1,
         y1: middleLineY + 8 * step,
         x2,
@@ -158,8 +168,8 @@ function drawLedgerLinesOnSvg(svgElement, middleLineY, cx, yFactor) {
       }),
     );
 
-    svgElement.appendChild(
-      createSvgElement("line", {
+    nodes.push(
+      line({
         x1,
         y1: middleLineY + 6 * step,
         x2,
@@ -170,8 +180,8 @@ function drawLedgerLinesOnSvg(svgElement, middleLineY, cx, yFactor) {
     );
 
     if (yFactor <= -10) {
-      svgElement.appendChild(
-        createSvgElement("line", {
+      nodes.push(
+        line({
           x1,
           y1: middleLineY + 10 * step,
           x2,
@@ -182,8 +192,8 @@ function drawLedgerLinesOnSvg(svgElement, middleLineY, cx, yFactor) {
       );
     }
   } else if (yFactor === -7 || yFactor === -6) {
-    svgElement.appendChild(
-      createSvgElement("line", {
+    nodes.push(
+      line({
         x1,
         y1: middleLineY + 6 * step,
         x2,
@@ -195,8 +205,8 @@ function drawLedgerLinesOnSvg(svgElement, middleLineY, cx, yFactor) {
   }
 
   if (yFactor >= 6) {
-    svgElement.appendChild(
-      createSvgElement("line", {
+    nodes.push(
+      line({
         x1,
         y1: middleLineY - 6 * step,
         x2,
@@ -207,8 +217,8 @@ function drawLedgerLinesOnSvg(svgElement, middleLineY, cx, yFactor) {
     );
 
     if (yFactor >= 8) {
-      svgElement.appendChild(
-        createSvgElement("line", {
+      nodes.push(
+        line({
           x1,
           y1: middleLineY - 8 * step,
           x2,
@@ -220,8 +230,8 @@ function drawLedgerLinesOnSvg(svgElement, middleLineY, cx, yFactor) {
     }
 
     if (yFactor >= 10) {
-      svgElement.appendChild(
-        createSvgElement("line", {
+      nodes.push(
+        line({
           x1,
           y1: middleLineY - 10 * step,
           x2,
@@ -232,10 +242,11 @@ function drawLedgerLinesOnSvg(svgElement, middleLineY, cx, yFactor) {
       );
     }
   }
+
+  return nodes;
 }
 
-export function drawNoteOnSvg({
-  svgElement,
+export function buildRenderedNoteModel({
   middleLineY,
   noteData,
   xPosition,
@@ -250,46 +261,46 @@ export function drawNoteOnSvg({
 
   const { yFactor, accidental } = drawingParams;
   const cy = middleLineY - yFactor * (LINE_SPACING / 2);
-  drawLedgerLinesOnSvg(svgElement, middleLineY, xPosition, yFactor);
 
-  const noteGroup = createSvgElement("g");
-
-  if (isClickable) {
-    noteGroup.classList.add("clickable-note");
-    noteGroup.setAttribute("data-note-scientific", noteData.scientific);
-    noteGroup.setAttribute("data-note-duration", noteData.duration);
-
-    if (noteIndex !== null) {
-      noteGroup.setAttribute("data-note-index", String(noteIndex));
+  const classNames = isClickable ? ["clickable-note"] : [];
+  const dataset = isClickable
+    ? {
+      noteScientific: noteData.scientific,
+      noteDuration: noteData.duration,
+      ...(noteIndex !== null ? { noteIndex: String(noteIndex) } : {}),
     }
-  }
+    : {};
+
+  const childNodes = [...buildLedgerLineModel(middleLineY, xPosition, yFactor)];
 
   const isHalfNote = noteData.duration === "2n" && noteColor === NOTE_COLOR_DEFAULT;
-  const noteHead = createSvgElement("ellipse", {
-    cx: xPosition,
-    cy,
-    rx: NOTE_HEAD_RX,
-    ry: NOTE_HEAD_RY,
-    fill: isHalfNote ? "white" : noteColor,
-    stroke: noteColor,
-    "stroke-width": NOTE_STROKE_WIDTH,
-  });
-
-  noteGroup.appendChild(noteHead);
+  childNodes.push(
+    ellipse({
+      cx: xPosition,
+      cy,
+      rx: NOTE_HEAD_RX,
+      ry: NOTE_HEAD_RY,
+      fill: isHalfNote ? "white" : noteColor,
+      stroke: noteColor,
+      "stroke-width": NOTE_STROKE_WIDTH,
+    }),
+  );
 
   if (accidental) {
     const accidentalSymbol = accidental === "#" ? "♯" : accidental === "b" ? "♭" : "";
 
-    const accidentalText = createSvgElement("text", {
-      x: xPosition + ACCIDENTAL_OFFSET_X,
-      y: cy + NOTE_HEAD_RY / 2,
-      "font-size": `${LINE_SPACING * 1.5}px`,
-      fill: noteColor,
-      "font-family": "Arial Unicode MS, Lucida Sans Unicode, DejaVu Sans, sans-serif",
-    });
-
-    accidentalText.textContent = accidentalSymbol;
-    noteGroup.appendChild(accidentalText);
+    childNodes.push(
+      text(
+        {
+          x: xPosition + ACCIDENTAL_OFFSET_X,
+          y: cy + NOTE_HEAD_RY / 2,
+          "font-size": `${LINE_SPACING * 1.5}px`,
+          fill: noteColor,
+          "font-family": "Arial Unicode MS, Lucida Sans Unicode, DejaVu Sans, sans-serif",
+        },
+        accidentalSymbol,
+      ),
+    );
   }
 
   let stemX = xPosition;
@@ -304,8 +315,8 @@ export function drawNoteOnSvg({
     stemY2 = cy + STEM_LENGTH;
   }
 
-  noteGroup.appendChild(
-    createSvgElement("line", {
+  childNodes.push(
+    line({
       x1: stemX,
       y1: stemY1,
       x2: stemX,
@@ -319,21 +330,48 @@ export function drawNoteOnSvg({
   const solfegeLabel = SOLFEGE_MAP[noteLetter] || "";
 
   if (solfegeLabel) {
-    const labelText = createSvgElement("text", {
-      x: xPosition,
-      y: STAFF_MARGIN_TOP + STAFF_LINES_COUNT * LINE_SPACING + 25,
-      "font-size": "14px",
-      "font-weight": "500",
-      fill: noteColor,
-      "text-anchor": "middle",
-    });
-
-    labelText.textContent = solfegeLabel;
-    noteGroup.appendChild(labelText);
+    childNodes.push(
+      text(
+        {
+          x: xPosition,
+          y: STAFF_MARGIN_TOP + STAFF_LINES_COUNT * LINE_SPACING + 25,
+          "font-size": "14px",
+          "font-weight": "500",
+          fill: noteColor,
+          "text-anchor": "middle",
+        },
+        solfegeLabel,
+      ),
+    );
   }
 
-  svgElement.appendChild(noteGroup);
-  return noteGroup;
+  return group(childNodes, {}, { classNames, dataset });
+}
+
+export function drawNoteOnSvg({
+  svgElement,
+  middleLineY,
+  noteData,
+  xPosition,
+  noteColor = NOTE_COLOR_DEFAULT,
+  isClickable = false,
+  noteIndex = null,
+}) {
+  const noteModel = buildRenderedNoteModel({
+    middleLineY,
+    noteData,
+    xPosition,
+    noteColor,
+    isClickable,
+    noteIndex,
+  });
+
+  if (!noteModel) {
+    return null;
+  }
+
+  const [noteElement] = appendSvgModel(svgElement, SVG_NS, [noteModel]);
+  return noteElement;
 }
 
 export function highlightCurrentNote(noteElementsArray, index) {
@@ -343,15 +381,15 @@ export function highlightCurrentNote(noteElementsArray, index) {
     }
 
     noteElement.classList.remove("current-singing-note");
-    const ellipse = noteElement.querySelector("ellipse");
+    const ellipseElement = noteElement.querySelector("ellipse");
 
-    if (!ellipse) {
+    if (!ellipseElement) {
       return;
     }
 
-    const isHalfNote = ellipse.getAttribute("fill") === "white";
-    ellipse.setAttribute("fill", isHalfNote ? "white" : NOTE_COLOR_DEFAULT);
-    ellipse.setAttribute("stroke", NOTE_COLOR_DEFAULT);
+    const isHalfNote = ellipseElement.getAttribute("fill") === "white";
+    ellipseElement.setAttribute("fill", isHalfNote ? "white" : NOTE_COLOR_DEFAULT);
+    ellipseElement.setAttribute("stroke", NOTE_COLOR_DEFAULT);
   });
 
   if (index < 0 || index >= noteElementsArray.length || !noteElementsArray[index]) {
@@ -361,15 +399,15 @@ export function highlightCurrentNote(noteElementsArray, index) {
   const current = noteElementsArray[index];
   current.classList.add("current-singing-note");
 
-  const ellipse = current.querySelector("ellipse");
-  if (!ellipse) {
+  const ellipseElement = current.querySelector("ellipse");
+  if (!ellipseElement) {
     return;
   }
 
-  const isHalfNote = ellipse.getAttribute("fill") === "white";
-  ellipse.setAttribute("stroke", NOTE_HIGHLIGHT_COLOR);
+  const isHalfNote = ellipseElement.getAttribute("fill") === "white";
+  ellipseElement.setAttribute("stroke", NOTE_HIGHLIGHT_COLOR);
 
   if (!isHalfNote) {
-    ellipse.setAttribute("fill", NOTE_HIGHLIGHT_COLOR);
+    ellipseElement.setAttribute("fill", NOTE_HIGHLIGHT_COLOR);
   }
 }

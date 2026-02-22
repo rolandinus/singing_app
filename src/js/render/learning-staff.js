@@ -13,6 +13,8 @@ import {
   SVG_STAFF_WIDTH,
 } from "../config/constants.js";
 import { scientificToDiatonicIndex } from "../utils/note-helpers.js";
+import { appendSvgModel } from "./svg-dom-renderer.js";
+import { ellipse, group, line, text } from "./staff-model.js";
 
 const CLEF_ANCHOR_BY_MIDDLE_LINE = {
   treble: "B4",
@@ -23,14 +25,6 @@ const CLEF_SYMBOL = {
   treble: "𝄞",
   bass: "𝄢",
 };
-
-function createSvgElement(type, attributes = {}) {
-  const element = document.createElementNS(SVG_NS, type);
-  Object.entries(attributes).forEach(([key, value]) => {
-    element.setAttribute(key, String(value));
-  });
-  return element;
-}
 
 function getYFactor(scientific, clef) {
   const anchor = CLEF_ANCHOR_BY_MIDDLE_LINE[clef] ?? CLEF_ANCHOR_BY_MIDDLE_LINE.treble;
@@ -44,7 +38,8 @@ function getYFactor(scientific, clef) {
   return noteIndex - anchorIndex;
 }
 
-function drawLedgerLines(svgElement, middleLineY, xPosition, yFactor) {
+function buildLedgerLineModel(middleLineY, xPosition, yFactor) {
+  const nodes = [];
   const ledgerWidth = NOTE_HEAD_RX * 2.5;
   const x1 = xPosition - ledgerWidth / 2;
   const x2 = xPosition + ledgerWidth / 2;
@@ -52,8 +47,8 @@ function drawLedgerLines(svgElement, middleLineY, xPosition, yFactor) {
 
   if (yFactor <= -6) {
     for (let factor = -6; factor >= yFactor; factor -= 2) {
-      svgElement.appendChild(
-        createSvgElement("line", {
+      nodes.push(
+        line({
           x1,
           y1: middleLineY + Math.abs(factor) * step,
           x2,
@@ -67,8 +62,8 @@ function drawLedgerLines(svgElement, middleLineY, xPosition, yFactor) {
 
   if (yFactor >= 6) {
     for (let factor = 6; factor <= yFactor; factor += 2) {
-      svgElement.appendChild(
-        createSvgElement("line", {
+      nodes.push(
+        line({
           x1,
           y1: middleLineY - factor * step,
           x2,
@@ -79,35 +74,37 @@ function drawLedgerLines(svgElement, middleLineY, xPosition, yFactor) {
       );
     }
   }
+
+  return nodes;
 }
 
-function drawClefSymbol(svgElement, clef, middleLineY) {
+function buildClefSymbolModel(clef, middleLineY) {
   const symbol = CLEF_SYMBOL[clef] ?? CLEF_SYMBOL.treble;
   const x = STAFF_MARGIN_LEFT + 24;
   const y = middleLineY + (clef === "treble" ? 23 : 8);
 
-  const clefText = createSvgElement("text", {
-    x,
-    y,
-    "font-size": clef === "treble" ? 64 : 56,
-    "font-family": "Bravura, Noto Music, serif",
-    fill: NOTE_COLOR_DEFAULT,
-  });
-  clefText.textContent = symbol;
-  svgElement.appendChild(clefText);
+  return text(
+    {
+      x,
+      y,
+      "font-size": clef === "treble" ? 64 : 56,
+      "font-family": "Bravura, Noto Music, serif",
+      fill: NOTE_COLOR_DEFAULT,
+    },
+    symbol,
+  );
 }
 
-export function clearStaff(svgElement) {
-  svgElement.innerHTML = "";
-}
+export function buildLearningStaffModel({
+  clef = "treble",
+  middleLineY = STAFF_MARGIN_TOP + 2 * LINE_SPACING,
+} = {}) {
+  const nodes = [];
 
-export function drawStaff(svgElement, { clef = "treble", middleLineY = STAFF_MARGIN_TOP + 2 * LINE_SPACING } = {}) {
-  clearStaff(svgElement);
-
-  for (let line = 0; line < STAFF_LINES_COUNT; line += 1) {
-    const y = STAFF_MARGIN_TOP + line * LINE_SPACING;
-    svgElement.appendChild(
-      createSvgElement("line", {
+  for (let lineIndex = 0; lineIndex < STAFF_LINES_COUNT; lineIndex += 1) {
+    const y = STAFF_MARGIN_TOP + lineIndex * LINE_SPACING;
+    nodes.push(
+      line({
         x1: STAFF_MARGIN_LEFT,
         y1: y,
         x2: SVG_STAFF_WIDTH - STAFF_MARGIN_LEFT,
@@ -118,7 +115,77 @@ export function drawStaff(svgElement, { clef = "treble", middleLineY = STAFF_MAR
     );
   }
 
-  drawClefSymbol(svgElement, clef, middleLineY);
+  nodes.push(buildClefSymbolModel(clef, middleLineY));
+  return nodes;
+}
+
+export function buildLearningNoteModel({
+  scientific,
+  xPosition,
+  clef = "treble",
+  noteColor = NOTE_COLOR_DEFAULT,
+  withLabel = false,
+  middleLineY = STAFF_MARGIN_TOP + 2 * LINE_SPACING,
+}) {
+  const yFactor = getYFactor(scientific, clef);
+  if (yFactor === null) {
+    return null;
+  }
+
+  const y = middleLineY - yFactor * (LINE_SPACING / 2);
+  const childNodes = [
+    ...buildLedgerLineModel(middleLineY, xPosition, yFactor),
+    ellipse({
+      cx: xPosition,
+      cy: y,
+      rx: NOTE_HEAD_RX,
+      ry: NOTE_HEAD_RY,
+      fill: noteColor,
+      stroke: noteColor,
+      "stroke-width": NOTE_STROKE_WIDTH,
+    }),
+  ];
+
+  const stemUp = yFactor < 0;
+  const stemX = stemUp ? xPosition + NOTE_HEAD_RX * 0.85 : xPosition - NOTE_HEAD_RX * 0.85;
+  const stemY2 = stemUp ? y - STEM_LENGTH : y + STEM_LENGTH;
+
+  childNodes.push(
+    line({
+      x1: stemX,
+      y1: y,
+      x2: stemX,
+      y2: stemY2,
+      stroke: noteColor,
+      "stroke-width": 1.5,
+    }),
+  );
+
+  if (withLabel) {
+    childNodes.push(
+      text(
+        {
+          x: xPosition,
+          y: STAFF_MARGIN_TOP + STAFF_LINES_COUNT * LINE_SPACING + 25,
+          "font-size": 14,
+          "text-anchor": "middle",
+          fill: noteColor,
+        },
+        scientific,
+      ),
+    );
+  }
+
+  return group(childNodes);
+}
+
+export function clearStaff(svgElement) {
+  svgElement.innerHTML = "";
+}
+
+export function drawStaff(svgElement, { clef = "treble", middleLineY = STAFF_MARGIN_TOP + 2 * LINE_SPACING } = {}) {
+  clearStaff(svgElement);
+  return appendSvgModel(svgElement, SVG_NS, buildLearningStaffModel({ clef, middleLineY }));
 }
 
 export function getNoteYPosition(scientific, { clef = "treble", middleLineY = STAFF_MARGIN_TOP + 2 * LINE_SPACING } = {}) {
@@ -138,57 +205,21 @@ export function drawNote(svgElement, {
   withLabel = false,
   middleLineY = STAFF_MARGIN_TOP + 2 * LINE_SPACING,
 }) {
-  const yFactor = getYFactor(scientific, clef);
-  if (yFactor === null) {
+  const noteNode = buildLearningNoteModel({
+    scientific,
+    xPosition,
+    clef,
+    noteColor,
+    withLabel,
+    middleLineY,
+  });
+
+  if (!noteNode) {
     return null;
   }
 
-  const y = middleLineY - yFactor * (LINE_SPACING / 2);
-  drawLedgerLines(svgElement, middleLineY, xPosition, yFactor);
-
-  const noteGroup = createSvgElement("g");
-
-  noteGroup.appendChild(
-    createSvgElement("ellipse", {
-      cx: xPosition,
-      cy: y,
-      rx: NOTE_HEAD_RX,
-      ry: NOTE_HEAD_RY,
-      fill: noteColor,
-      stroke: noteColor,
-      "stroke-width": NOTE_STROKE_WIDTH,
-    }),
-  );
-
-  const stemUp = yFactor < 0;
-  const stemX = stemUp ? xPosition + NOTE_HEAD_RX * 0.85 : xPosition - NOTE_HEAD_RX * 0.85;
-  const stemY2 = stemUp ? y - STEM_LENGTH : y + STEM_LENGTH;
-
-  noteGroup.appendChild(
-    createSvgElement("line", {
-      x1: stemX,
-      y1: y,
-      x2: stemX,
-      y2: stemY2,
-      stroke: noteColor,
-      "stroke-width": 1.5,
-    }),
-  );
-
-  if (withLabel) {
-    const label = createSvgElement("text", {
-      x: xPosition,
-      y: STAFF_MARGIN_TOP + STAFF_LINES_COUNT * LINE_SPACING + 25,
-      "font-size": 14,
-      "text-anchor": "middle",
-      fill: noteColor,
-    });
-    label.textContent = scientific;
-    noteGroup.appendChild(label);
-  }
-
-  svgElement.appendChild(noteGroup);
-  return noteGroup;
+  const [noteElement] = appendSvgModel(svgElement, SVG_NS, [noteNode]);
+  return noteElement;
 }
 
 export function drawNoteSequence(svgElement, { notes, clef = "treble", noteColor = NOTE_COLOR_DEFAULT } = {}) {
