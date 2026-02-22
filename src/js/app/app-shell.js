@@ -1,18 +1,17 @@
-import { NOTE_STRINGS } from "../config/constants.js";
-import { CLEF_OPTIONS, DEFAULT_SETTINGS, MAX_LEVEL, SKILL_DEFINITIONS } from "../config/curriculum.js";
+import { DEFAULT_SETTINGS, MAX_LEVEL, SKILL_DEFINITIONS } from "../config/curriculum.js";
 import { SingingTrainerApp } from "./singing-trainer-app.js";
-import { EarTrainingPlayer } from "../audio/ear-training-player.js";
-import { ProgressRepository } from "../data/progress-repository.js";
-import { SettingsRepository } from "../data/settings-repository.js";
 import { ExerciseEvaluator } from "../domain/exercise-evaluator.js";
 import { ExerciseGenerator } from "../domain/exercise-generator.js";
-import { createDefaultProgressRecord, ProgressionEngine } from "../domain/progression-engine.js";
+import { ProgressionEngine } from "../domain/progression-engine.js";
 import { SessionPlanner } from "../domain/session-planner.js";
-import { autoCorrelate, midiToNoteName, noteFromPitch } from "../utils/pitch.js";
+import { BrowserAudioPromptPort } from "../adapters/browser-audio-prompt-port.js";
+import { BrowserPitchCapturePort } from "../adapters/browser-pitch-capture-port.js";
+import { BrowserStoragePort } from "../adapters/browser-storage-port.js";
 import { DashboardView } from "../ui/dashboard-view.js";
 import { PracticeView } from "../ui/practice-view.js";
 import { SessionSummaryView } from "../ui/session-summary-view.js";
 import { SettingsView } from "../ui/settings-view.js";
+import { SessionService } from "./session-service.js";
 
 const FAMILY_LABELS = {
   visual: "Visuell",
@@ -20,22 +19,23 @@ const FAMILY_LABELS = {
   singing: "Singen",
 };
 
-function createSessionId() {
-  return `session-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
-}
-
 export class AppShell {
-  constructor(dom) {
+  constructor(dom, {
+    storagePort = new BrowserStoragePort(),
+    audioPromptPort = new BrowserAudioPromptPort(),
+    pitchCapturePort = new BrowserPitchCapturePort(),
+  } = {}) {
     this.dom = dom;
 
-    this.settingsRepository = new SettingsRepository();
-    this.progressRepository = new ProgressRepository();
-
-    this.exerciseGenerator = new ExerciseGenerator();
-    this.exerciseEvaluator = new ExerciseEvaluator();
-    this.progressionEngine = new ProgressionEngine();
-    this.sessionPlanner = new SessionPlanner();
-    this.earPlayer = new EarTrainingPlayer(window.Tone ?? null);
+    this.sessionService = new SessionService({
+      storagePort,
+      audioPromptPort,
+      pitchCapturePort,
+      exerciseGenerator: new ExerciseGenerator(),
+      exerciseEvaluator: new ExerciseEvaluator(),
+      progressionEngine: new ProgressionEngine(),
+      sessionPlanner: new SessionPlanner(),
+    });
 
     this.dashboardView = new DashboardView(dom);
     this.practiceView = new PracticeView(dom);
@@ -43,31 +43,13 @@ export class AppShell {
     this.settingsView = new SettingsView(dom);
 
     this.settings = structuredClone(DEFAULT_SETTINGS);
-    this.progressBySkill = new Map();
-    this.recentSessions = [];
-
-    this.activeSession = null;
-    this.currentEvaluation = null;
     this.melodyTrainer = null;
-
-    this.audioContext = null;
-    this.analyser = null;
-    this.microphoneSourceNode = null;
   }
 
   async init() {
-    await this.progressRepository.init();
+    await this.sessionService.init();
 
-    this.settings = await this.settingsRepository.load();
-
-    const allProgress = await this.progressRepository.getAllProgress();
-    allProgress.forEach((record) => {
-      if (record?.skillKey) {
-        this.progressBySkill.set(record.skillKey, record);
-      }
-    });
-
-    this.recentSessions = await this.progressRepository.getRecentSessions(20);
+    this.settings = this.sessionService.getSettings();
 
     this.#populateFamilySelect();
     this.#populateLevelSelect();
@@ -149,36 +131,16 @@ export class AppShell {
   }
 
   renderDashboard() {
-    const skillRows = this.#buildSkillRows();
+    const skillRows = this.sessionService.buildSkillRows();
+    const recentSessions = this.sessionService.getRecentSessions();
 
     this.dashboardView.renderSummary({
       dailyGoal: this.settings.dailyGoalExercises,
-      lastSession: this.recentSessions[0] ?? null,
+      lastSession: recentSessions[0] ?? null,
     });
 
     this.dashboardView.renderSkillMap(skillRows);
-    this.dashboardView.renderRecentSessions(this.recentSessions);
-  }
-
-  #buildSkillRows() {
-    const rows = [];
-
-    this.settings.enabledClefs.forEach((clef) => {
-      SKILL_DEFINITIONS.forEach((skill) => {
-        const progressKey = `${clef}.${skill.key}`;
-        const record = this.progressBySkill.get(progressKey) ?? createDefaultProgressRecord(progressKey);
-
-        rows.push({
-          clef,
-          skillKey: skill.key,
-          level: record.level,
-          mastery: record.mastery,
-          attemptsTotal: record.attemptsTotal,
-        });
-      });
-    });
-
-    return rows;
+    this.dashboardView.renderRecentSessions(recentSessions);
   }
 
   #populateFamilySelect() {
@@ -207,7 +169,7 @@ export class AppShell {
     const selectedFamily = this.dom.familySelect.value || "visual";
     this.#populateSkillSelect(selectedFamily);
 
-    const clefs = this.settings.enabledClefs.length > 0 ? this.settings.enabledClefs : CLEF_OPTIONS;
+    const clefs = this.sessionService.getClefChoices();
     this.dom.clefSelect.innerHTML = clefs
       .map((clef) => `<option value="${clef}">${clef}</option>`)
       .join("");
@@ -217,15 +179,16 @@ export class AppShell {
     }
   }
 
-  async startGuidedSession() {
-    const queue = this.sessionPlanner.generateGuidedSession({
-      enabledClefs: this.settings.enabledClefs,
-      progressBySkill: this.progressBySkill,
-      exerciseCount: this.settings.dailyGoalExercises,
-      generator: this.exerciseGenerator,
-    });
+  startGuidedSession() {
+    const started = this.sessionService.startGuidedSession();
+    if (!started.ok) {
+      this.practiceView.showFeedback(started.error, false);
+      return;
+    }
 
-    this.#startSession("guided", queue);
+    this.summaryView.hide();
+    this.showScreen("practice");
+    this.#renderCurrentExercise();
   }
 
   startCustomSession() {
@@ -234,65 +197,30 @@ export class AppShell {
     const clef = this.dom.clefSelect.value;
     const level = Number.parseInt(this.dom.levelSelect.value, 10) || 1;
 
-    const queue = this.sessionPlanner.generateCustomSession({
-      skillKey,
-      clef,
-      level,
-      count,
-      generator: this.exerciseGenerator,
-    });
-
-    this.#startSession("custom", queue);
-  }
-
-  #startSession(mode, queue) {
-    if (!queue.length) {
-      this.practiceView.showFeedback("Keine Übungen für diese Auswahl generiert.", false);
+    const started = this.sessionService.startCustomSession({ skillKey, clef, level, count });
+    if (!started.ok) {
+      this.practiceView.showFeedback(started.error, false);
       return;
     }
 
-    this.activeSession = {
-      sessionId: createSessionId(),
-      mode,
-      queue,
-      index: 0,
-      results: [],
-      startedAt: new Date().toISOString(),
-    };
-
-    this.currentEvaluation = null;
     this.summaryView.hide();
     this.showScreen("practice");
     this.#renderCurrentExercise();
   }
 
-  #getCurrentExercise() {
-    if (!this.activeSession) {
-      return null;
-    }
-
-    return this.activeSession.queue[this.activeSession.index] ?? null;
-  }
-
   #renderCurrentExercise() {
-    const exercise = this.#getCurrentExercise();
+    const exercise = this.sessionService.getCurrentExercise();
 
     if (!exercise) {
-      this.endSession();
+      void this.endSession();
       return;
     }
-
-    this.currentEvaluation = null;
 
     if (exercise.skillKey !== "sing_melody" && this.melodyTrainer) {
       this.melodyTrainer.stopAllAudioAndRecording();
     }
 
-    this.practiceView.renderSessionMeta({
-      mode: this.activeSession.mode,
-      index: this.activeSession.index,
-      total: this.activeSession.queue.length,
-    });
+    this.practiceView.renderSessionMeta(this.sessionService.getSessionMeta());
 
     this.practiceView.renderExercise(exercise, {
       onChoice: (choice) => this.submitChoice(choice),
@@ -301,7 +229,7 @@ export class AppShell {
   }
 
   prepareMelodyExercise() {
-    const exercise = this.#getCurrentExercise();
+    const exercise = this.sessionService.getCurrentExercise();
     if (!exercise || exercise.skillKey !== "sing_melody") {
       return;
     }
@@ -371,120 +299,45 @@ export class AppShell {
   }
 
   async handleMelodyEvaluation(result) {
-    const exercise = this.#getCurrentExercise();
-    if (!exercise || exercise.skillKey !== "sing_melody" || this.currentEvaluation) {
-      return;
-    }
-
-    const accuracy = Number(result?.accuracy ?? 0);
-    const minAccuracy = Number(exercise.expectedAnswer?.minAccuracy ?? 0.65);
-    const correct = accuracy >= minAccuracy;
-
-    await this.#applyEvaluation(exercise, {
-      correct,
-      score: Math.max(0, Math.min(1, accuracy)),
-      accuracyDetail: {
-        totalNotes: result?.totalNotes ?? 0,
-        correctNotes: result?.correctNotes ?? 0,
-        accuracy,
-        minAccuracy,
-      },
-      feedback: `Melodie: ${result?.correctNotes ?? 0}/${result?.totalNotes ?? 0} korrekt (${Math.round(accuracy * 100)}%)`,
-      telemetry: {},
-    }, result);
-  }
-
-  #getToleranceForLevel(level) {
-    const configured = this.settings.pitchToleranceCentsByLevel?.[level];
-    return Number.isFinite(Number(configured)) ? Number(configured) : 50;
+    const outcome = await this.sessionService.handleMelodyEvaluation(result);
+    this.#handleEvaluationOutcome(outcome);
   }
 
   async submitChoice(choice) {
-    const exercise = this.#getCurrentExercise();
-    if (!exercise || exercise.family === "singing" || this.currentEvaluation) {
-      return;
-    }
-
-    const evaluation = this.exerciseEvaluator.evaluate(exercise, { answer: String(choice) });
-    await this.#applyEvaluation(exercise, evaluation, null, String(choice));
+    const outcome = await this.sessionService.submitChoice(choice);
+    this.#handleEvaluationOutcome(outcome);
   }
 
   async playPrompt() {
-    const exercise = this.#getCurrentExercise();
-    if (!exercise) {
-      return;
-    }
-
-    if (exercise.skillKey === "interval_aural") {
-      await this.earPlayer.playInterval(exercise.prompt.first, exercise.prompt.second);
-      return;
-    }
-
-    if (exercise.skillKey === "sing_note") {
-      await this.earPlayer.playNote(exercise.prompt.target);
-      return;
-    }
-
-    if (exercise.skillKey === "sing_interval") {
-      await this.earPlayer.playReferenceWithTarget(exercise.prompt.reference, exercise.prompt.target);
-    }
+    await this.sessionService.playPrompt();
   }
 
   async captureSingingAttempt() {
-    const exercise = this.#getCurrentExercise();
-    if (!exercise || exercise.family !== "singing" || this.currentEvaluation) {
-      return;
-    }
-
     this.practiceView.showFeedback("Aufnahme läuft...", true);
 
-    const captured = await this.#capturePitchSample(2200);
-
-    const evaluation = this.exerciseEvaluator.evaluate(
-      exercise,
-      captured,
-      { toleranceCents: this.#getToleranceForLevel(exercise.level) },
-    );
-
-    await this.#applyEvaluation(exercise, evaluation, captured);
+    try {
+      const outcome = await this.sessionService.captureSingingAttempt();
+      this.#handleEvaluationOutcome(outcome);
+    } catch (error) {
+      this.practiceView.showFeedback(`Audio-Fehler: ${error.message}`, false);
+    }
   }
 
-  async #applyEvaluation(exercise, evaluation, extraSubmission = null, selectedChoice = null) {
-    if (!this.activeSession) {
+  #handleEvaluationOutcome(outcome) {
+    if (!outcome) {
       return;
     }
 
-    this.currentEvaluation = evaluation;
+    const { exercise, evaluation, feedback, selectedChoice, expectedChoice } = outcome;
 
-    const timestamp = new Date().toISOString();
-    const progressKey = `${exercise.clef}.${exercise.skillKey}`;
-    const currentRecord = this.progressBySkill.get(progressKey) ?? createDefaultProgressRecord(progressKey);
-
-    const { record, leveledUp } = this.progressionEngine.applyEvaluation(currentRecord, evaluation, timestamp);
-
-    await this.progressRepository.saveProgress(record);
-    this.progressBySkill.set(progressKey, record);
-
-    this.activeSession.results.push({
-      exerciseId: exercise.id,
-      skillKey: exercise.skillKey,
-      clef: exercise.clef,
-      correct: evaluation.correct,
-      score: evaluation.score,
-      submission: extraSubmission,
-      evaluatedAt: timestamp,
-    });
-
-    const baseFeedback = evaluation.feedback || (evaluation.correct ? "Richtig" : "Falsch");
-    const feedback = leveledUp ? `${baseFeedback} • Level Up auf L${record.level}` : baseFeedback;
     this.practiceView.showFeedback(feedback, evaluation.correct);
     this.dom.answerOptions.querySelectorAll("button").forEach((button) => {
       button.disabled = true;
       button.classList.add("opacity-50");
     });
 
-    if (selectedChoice !== null && exercise.expectedAnswer?.answer != null) {
-      this.practiceView.markChoiceResult(selectedChoice, exercise.expectedAnswer.answer);
+    if (selectedChoice !== null && expectedChoice !== null) {
+      this.practiceView.markChoiceResult(selectedChoice, expectedChoice);
     }
 
     const actionState = this.#getActionStateForExercise(exercise, true);
@@ -512,74 +365,26 @@ export class AppShell {
   }
 
   async nextExercise() {
-    if (!this.activeSession) {
+    const result = await this.sessionService.nextExercise();
+    if (!result?.ok) {
       return;
     }
 
-    const exercise = this.#getCurrentExercise();
-    if (exercise && !this.currentEvaluation) {
-      if (exercise.skillKey === "sing_melody") {
-        await this.#applyEvaluation(exercise, {
-          correct: false,
-          score: 0,
-          accuracyDetail: { skipped: true },
-          feedback: "Melodie-Übung übersprungen",
-          telemetry: {},
-        });
-      } else {
-        const evaluation = this.exerciseEvaluator.evaluate(
-          exercise,
-          exercise.family === "singing" ? null : { answer: "__skip__" },
-          { toleranceCents: this.#getToleranceForLevel(exercise.level) },
-        );
-        await this.#applyEvaluation(exercise, evaluation);
-      }
-    }
-
-    this.activeSession.index += 1;
-
-    if (this.activeSession.index >= this.activeSession.queue.length) {
-      await this.endSession();
+    if (result.ended) {
+      this.#applySessionEnded(result.summary);
       return;
     }
 
     this.#renderCurrentExercise();
   }
 
-  async endSession() {
-    if (!this.activeSession) {
+  #applySessionEnded(summary) {
+    if (!summary) {
       return;
     }
 
-    const total = this.activeSession.results.length;
-    const correct = this.activeSession.results.filter((result) => result.correct).length;
-    const accuracy = total > 0 ? correct / total : 0;
-
-    const summary = {
-      mode: this.activeSession.mode,
-      total,
-      correct,
-      accuracy,
-    };
-
-    const completedAt = new Date().toISOString();
-
-    const sessionRecord = {
-      sessionId: this.activeSession.sessionId,
-      startedAt: this.activeSession.startedAt,
-      completedAt,
-      mode: this.activeSession.mode,
-      exercises: this.activeSession.results,
-      summary,
-    };
-
-    await this.progressRepository.saveSession(sessionRecord);
-    this.recentSessions = await this.progressRepository.getRecentSessions(20);
-
     this.summaryView.show(summary);
-    this.activeSession = null;
-    this.currentEvaluation = null;
-    this.#stopMicrophone();
+
     if (this.melodyTrainer) {
       this.melodyTrainer.stopAllAudioAndRecording();
     }
@@ -588,104 +393,22 @@ export class AppShell {
     this.renderDashboard();
   }
 
+  async endSession() {
+    const ended = await this.sessionService.endSession();
+    if (!ended) {
+      return;
+    }
+
+    this.#applySessionEnded(ended.summary);
+  }
+
   async saveSettings() {
     const partial = this.settingsView.readValues();
-    this.settings = await this.settingsRepository.save({
-      ...this.settings,
-      ...partial,
-    });
+    this.settings = await this.sessionService.saveSettings(partial);
 
     this.#refreshSkillAndClefSelectors();
     this.settingsView.render(this.settings);
     this.settingsView.showStatus("Einstellungen gespeichert.");
     this.renderDashboard();
-  }
-
-  async #ensureMicrophone() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error("Mikrofonzugriff nicht verfügbar.");
-    }
-
-    if (!this.audioContext) {
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      this.audioContext = new AudioContextClass();
-    }
-
-    if (this.audioContext.state === "suspended") {
-      await this.audioContext.resume();
-    }
-
-    if (!this.analyser) {
-      this.analyser = this.audioContext.createAnalyser();
-      this.analyser.minDecibels = -100;
-      this.analyser.maxDecibels = -10;
-      this.analyser.smoothingTimeConstant = 0.7;
-      this.analyser.fftSize = 2048;
-    }
-
-    if (!this.microphoneSourceNode) {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      this.microphoneSourceNode = this.audioContext.createMediaStreamSource(stream);
-      this.microphoneSourceNode.connect(this.analyser);
-    }
-  }
-
-  #stopMicrophone() {
-    if (!this.microphoneSourceNode) {
-      return;
-    }
-
-    this.microphoneSourceNode.disconnect();
-    this.microphoneSourceNode.mediaStream?.getTracks().forEach((track) => track.stop());
-    this.microphoneSourceNode = null;
-  }
-
-  async #capturePitchSample(durationMs) {
-    try {
-      await this.#ensureMicrophone();
-    } catch (error) {
-      this.practiceView.showFeedback(`Audio-Fehler: ${error.message}`, false);
-      return null;
-    }
-
-    return new Promise((resolve) => {
-      const frequencies = [];
-      const startedAt = performance.now();
-
-      const intervalId = setInterval(() => {
-        if (!this.analyser || !this.audioContext) {
-          return;
-        }
-
-        const buffer = new Float32Array(this.analyser.fftSize);
-        this.analyser.getFloatTimeDomainData(buffer);
-
-        const frequency = autoCorrelate(buffer, this.audioContext.sampleRate);
-        if (frequency !== -1 && Number.isFinite(frequency)) {
-          frequencies.push(frequency);
-        }
-
-        if (performance.now() - startedAt >= durationMs) {
-          clearInterval(intervalId);
-
-          if (frequencies.length === 0) {
-            this.#stopMicrophone();
-            resolve(null);
-            return;
-          }
-
-          const sorted = [...frequencies].sort((a, b) => a - b);
-          const medianFrequency = sorted[Math.floor(sorted.length / 2)];
-          const detectedMidi = noteFromPitch(medianFrequency);
-
-          resolve({
-            detectedFrequency: medianFrequency,
-            detectedMidi,
-            noteName: midiToNoteName(detectedMidi, NOTE_STRINGS),
-          });
-          this.#stopMicrophone();
-        }
-      }, 60);
-    });
   }
 }
