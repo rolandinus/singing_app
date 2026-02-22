@@ -1,11 +1,11 @@
 import { getDomElements } from "./app/dom.js";
-import { SingingTrainerApp } from "./app/singing-trainer-app.js";
+import { AppShell } from "./app/app-shell.js";
 
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   try {
     const dom = getDomElements();
-    const app = new SingingTrainerApp(dom);
-    app.init();
+    const app = new AppShell(dom);
+    await app.init();
   } catch (error) {
     console.error("Initialization failed:", error);
   }

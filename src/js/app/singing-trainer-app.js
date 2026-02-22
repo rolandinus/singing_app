@@ -13,11 +13,18 @@ import {
   SVG_STAFF_WIDTH,
 } from "../config/constants.js";
 import { autoCorrelate, midiToNoteName, noteFromPitch } from "../utils/pitch.js";
-import { createSvgElement, drawNoteOnSvg, drawStaffOnSvg, highlightCurrentNote } from "../render/staff.js";
+import {
+  createSvgElement,
+  drawNoteOnSvg,
+  drawStaffOnSvg,
+  getNoteYPosition,
+  highlightCurrentNote,
+} from "../render/staff.js";
 
 export class SingingTrainerApp {
-  constructor(dom) {
+  constructor(dom, options = {}) {
     this.dom = dom;
+    this.options = options;
     this.tone = window.Tone ?? null;
 
     this.generatedNotes = [];
@@ -41,6 +48,7 @@ export class SingingTrainerApp {
     this.detectedPitchesInSlot = [];
 
     this.playbackLine = null;
+    this.liveFeedbackMarker = null;
 
     this.isContinuousDetectionActive = false;
   }
@@ -110,6 +118,12 @@ export class SingingTrainerApp {
     this.dom.continuousDetectionBtn.addEventListener("click", () => {
       this.toggleContinuousDetection();
     });
+
+    this.dom.liveFeedbackToggle.addEventListener("change", () => {
+      if (!this.dom.liveFeedbackToggle.checked) {
+        this.clearLiveFeedbackMarker();
+      }
+    });
   }
 
   sanitizeBpmInput() {
@@ -143,6 +157,89 @@ export class SingingTrainerApp {
       this.playbackLine.remove();
       this.playbackLine = null;
     }
+  }
+
+  clearLiveFeedbackMarker() {
+    if (!this.liveFeedbackMarker) {
+      return;
+    }
+
+    this.liveFeedbackMarker.remove();
+    this.liveFeedbackMarker = null;
+  }
+
+  updateLiveFeedbackMarker(midiNote) {
+    if (!this.isRecording || !this.dom.liveFeedbackToggle.checked) {
+      this.clearLiveFeedbackMarker();
+      return;
+    }
+
+    const targetNote = this.generatedNotes[this.currentRecordingSlot];
+    if (!targetNote) {
+      this.clearLiveFeedbackMarker();
+      return;
+    }
+
+    const targetMidi = NOTE_PROPERTIES[targetNote.scientific]?.midi;
+    if (targetMidi === undefined || targetMidi === midiNote) {
+      this.clearLiveFeedbackMarker();
+      return;
+    }
+
+    const sungNoteScientific = midiToNoteName(midiNote, NOTE_STRINGS);
+    if (!sungNoteScientific) {
+      this.clearLiveFeedbackMarker();
+      return;
+    }
+
+    const yPosition = getNoteYPosition(sungNoteScientific, MIDDLE_LINE_D3_Y_GENERATED);
+    if (yPosition === null || targetNote.xPosition === undefined) {
+      this.clearLiveFeedbackMarker();
+      return;
+    }
+
+    this.clearLiveFeedbackMarker();
+
+    const markerGroup = createSvgElement("g", { "data-live-feedback": "wrong-pitch" });
+    const markerX = targetNote.xPosition;
+    const markerColor = "#dc2626";
+
+    markerGroup.appendChild(
+      createSvgElement("line", {
+        x1: markerX - 16,
+        y1: yPosition,
+        x2: markerX + 16,
+        y2: yPosition,
+        stroke: markerColor,
+        "stroke-width": "2",
+        "stroke-dasharray": "4 3",
+      }),
+    );
+
+    markerGroup.appendChild(
+      createSvgElement("ellipse", {
+        cx: markerX,
+        cy: yPosition,
+        rx: 8,
+        ry: 6,
+        fill: "rgba(220, 38, 38, 0.18)",
+        stroke: markerColor,
+        "stroke-width": "2",
+      }),
+    );
+
+    const markerLabel = createSvgElement("text", {
+      x: markerX + 18,
+      y: yPosition - 8,
+      "font-size": "11px",
+      "font-weight": "600",
+      fill: markerColor,
+    });
+    markerLabel.textContent = sungNoteScientific;
+    markerGroup.appendChild(markerLabel);
+
+    this.dom.staffSvg.appendChild(markerGroup);
+    this.liveFeedbackMarker = markerGroup;
   }
 
   getSelectedIntervals() {
@@ -218,6 +315,7 @@ export class SingingTrainerApp {
     this.generatedNotes = [];
     this.recordedNotesDisplay = [];
     this.noteElementsArray = [];
+    this.clearLiveFeedbackMarker();
 
     const selectedIntervals = this.getSelectedIntervals();
     if (selectedIntervals.length === 0) {
@@ -433,6 +531,14 @@ export class SingingTrainerApp {
     const frequency = autoCorrelate(buffer, this.audioContext.sampleRate);
     if (frequency !== -1) {
       this.detectedPitchesInSlot.push(frequency);
+      const liveMidi = noteFromPitch(frequency);
+      if (Number.isFinite(liveMidi) && liveMidi >= 0 && liveMidi <= 127) {
+        this.updateLiveFeedbackMarker(liveMidi);
+      } else {
+        this.clearLiveFeedbackMarker();
+      }
+    } else {
+      this.clearLiveFeedbackMarker();
     }
   }
 
@@ -440,6 +546,7 @@ export class SingingTrainerApp {
     if (this.detectedPitchesInSlot.length === 0) {
       this.recordedNotesDisplay.push(null);
       this.dom.detectedNoteDebug.textContent = `Slot ${this.currentRecordingSlot + 1}: Stille`;
+      this.clearLiveFeedbackMarker();
       return;
     }
 
@@ -452,6 +559,7 @@ export class SingingTrainerApp {
       this.recordedNotesDisplay.push(null);
       this.dom.detectedNoteDebug.textContent = `Slot ${this.currentRecordingSlot + 1}: Stille`;
       this.detectedPitchesInSlot = [];
+      this.clearLiveFeedbackMarker();
       return;
     }
 
@@ -463,6 +571,7 @@ export class SingingTrainerApp {
       this.recordedNotesDisplay.push(null);
       this.dom.detectedNoteDebug.textContent = `Slot ${this.currentRecordingSlot + 1}: Stille`;
       this.detectedPitchesInSlot = [];
+      this.clearLiveFeedbackMarker();
       return;
     }
 
@@ -477,6 +586,7 @@ export class SingingTrainerApp {
 
     this.dom.detectedNoteDebug.textContent = `Slot ${this.currentRecordingSlot + 1}: ${sungNoteScientific} (${isCorrect ? "Korrekt" : "Abweichung"})`;
     this.detectedPitchesInSlot = [];
+    this.clearLiveFeedbackMarker();
   }
 
   async startRecordingProcess() {
@@ -500,6 +610,7 @@ export class SingingTrainerApp {
     this.currentRecordingSlot = 0;
     this.recordedNotesDisplay = [];
     this.detectedPitchesInSlot = [];
+    this.clearLiveFeedbackMarker();
 
     drawStaffOnSvg(this.dom.recordedStaffSvg, MIDDLE_LINE_D3_Y_RECORDED);
 
@@ -606,6 +717,7 @@ export class SingingTrainerApp {
         if (this.currentRecordingSlot < this.generatedNotes.length) {
           this.dom.messageBox.textContent = `Aufnahme läuft... (Note ${this.currentRecordingSlot + 1}/${this.generatedNotes.length})`;
           highlightCurrentNote(this.noteElementsArray, this.currentRecordingSlot);
+          this.clearLiveFeedbackMarker();
         }
       }, slotEndTime * 1000 - 50);
 
@@ -646,6 +758,7 @@ export class SingingTrainerApp {
 
     highlightCurrentNote(this.noteElementsArray, -1);
     this.removePlaybackLine();
+    this.clearLiveFeedbackMarker();
 
     this.disconnectMicrophone();
 
@@ -685,6 +798,20 @@ export class SingingTrainerApp {
 
       currentX += noteWidth;
     }
+
+    const totalNotes = this.generatedNotes.length;
+    const correctNotes = this.recordedNotesDisplay.filter((note) => note && note.color === NOTE_COLOR_DEFAULT).length;
+    const accuracy = totalNotes > 0 ? correctNotes / totalNotes : 0;
+
+    if (typeof this.options.onMelodyEvaluated === "function") {
+      this.options.onMelodyEvaluated({
+        totalNotes,
+        correctNotes,
+        accuracy,
+        generatedNotes: this.generatedNotes.map((note) => ({ ...note })),
+        recordedNotes: this.recordedNotesDisplay.map((note) => (note ? { ...note } : null)),
+      });
+    }
   }
 
   disconnectMicrophone() {
@@ -721,6 +848,7 @@ export class SingingTrainerApp {
 
     highlightCurrentNote(this.noteElementsArray, -1);
     this.removePlaybackLine();
+    this.clearLiveFeedbackMarker();
     this.disconnectMicrophone();
 
     this.dom.visualMetronomeIndicator.classList.remove("active");
@@ -771,6 +899,7 @@ export class SingingTrainerApp {
     this.disconnectMicrophone();
 
     this.isContinuousDetectionActive = false;
+    this.clearLiveFeedbackMarker();
     this.dom.continuousDetectionBtn.textContent = "Fortlaufende Notenerkennung starten";
     this.dom.continuousDetectionBtn.classList.remove("bg-red-500", "hover:bg-red-600");
     this.dom.continuousDetectionBtn.classList.add("bg-purple-500", "hover:bg-purple-600");

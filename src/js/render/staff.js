@@ -131,6 +131,15 @@ function getNoteDrawingParams(scientificNoteName) {
   };
 }
 
+export function getNoteYPosition(scientificNoteName, middleLineY = MIDDLE_LINE_D3_Y_GENERATED) {
+  const drawingParams = getNoteDrawingParams(scientificNoteName);
+  if (!drawingParams) {
+    return null;
+  }
+
+  return middleLineY - drawingParams.yFactor * (LINE_SPACING / 2);
+}
+
 function drawLedgerLinesOnSvg(svgElement, middleLineY, cx, yFactor) {
   const ledgerWidth = NOTE_HEAD_RX * 2.5;
   const x1 = cx - ledgerWidth / 2;
