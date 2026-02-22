@@ -1,0 +1,821 @@
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f1f5f9;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    /* ── APP BAR ─────────────────────────────────────── */
+    .app-bar {
+      background: #fff;
+      border-bottom: 1px solid rgba(15,23,42,0.08);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .app-bar-inner {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .app-title {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: -0.015em;
+      flex-shrink: 0;
+    }
+
+    .app-tagline {
+      font-size: 0.8125rem;
+      color: #94a3b8;
+      font-weight: 400;
+      margin-left: 10px;
+    }
+
+    /* ── NAV TABS ────────────────────────────────────── */
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .nav-btn {
+      padding: 6px 14px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #64748b;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      transition: background 0.1s, color 0.1s;
+      font-family: inherit;
+    }
+
+    .nav-btn:hover {
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+
+    .nav-btn.active {
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-weight: 600;
+    }
+
+    /* ── PAGE WRAPPER ────────────────────────────────── */
+    .page-content {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* ── SCREENS ─────────────────────────────────────── */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ── SURFACES ────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+    }
+
+    /* ── DASHBOARD: HERO ─────────────────────────────── */
+    .dashboard-hero {
+      background: linear-gradient(130deg, #1e3a8a 0%, #2563eb 100%);
+      border-radius: 12px;
+      padding: 28px 32px;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .dashboard-hero::before {
+      content: '';
+      position: absolute;
+      right: -40px;
+      top: -40px;
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      pointer-events: none;
+    }
+
+    .dashboard-hero::after {
+      content: '';
+      position: absolute;
+      right: 60px;
+      bottom: -60px;
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.04);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      opacity: 0.55;
+      margin-bottom: 6px;
+    }
+
+    .hero-title {
+      font-size: 1.3125rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+      letter-spacing: -0.015em;
+    }
+
+    .hero-body {
+      font-size: 0.875rem;
+      color: rgba(255,255,255,0.72);
+      margin-bottom: 22px;
+      line-height: 1.55;
+      max-width: 340px;
+    }
+
+    .hero-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: #fff;
+      color: #1d4ed8;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      transition: box-shadow 0.15s, transform 0.1s;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-btn:hover {
+      box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+      transform: translateY(-1px);
+    }
+
+    .hero-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    }
+
+    /* ── DASHBOARD: SIDEBAR CARDS ────────────────────── */
+    .side-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 18px 20px;
+    }
+
+    .custom-card {
+      background: #f0fdf4;
+      border-radius: 12px;
+      border: 1px solid rgba(5,150,105,0.15);
+      padding: 18px 20px;
+    }
+
+    /* ── SECTION LABELS ──────────────────────────────── */
+    .section-label {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
+
+    /* ── SKILL MAP ───────────────────────────────────── */
+    .clef-header {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #cbd5e1;
+      padding: 6px 0 10px;
+      border-bottom: 1px solid #f1f5f9;
+      margin-bottom: 4px;
+    }
+
+    .skill-card {
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 14px 16px;
+      transition: box-shadow 0.15s, transform 0.12s;
+    }
+
+    .skill-card:hover {
+      box-shadow: 0 4px 14px rgba(15,23,42,0.08);
+      transform: translateY(-1px);
+    }
+
+    .skill-name {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .skill-level {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: #94a3b8;
+      background: #f1f5f9;
+      padding: 2px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.03em;
+    }
+
+    .mastery-track {
+      width: 100%;
+      height: 5px;
+      background: #f1f5f9;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 10px 0 7px;
+    }
+
+    .mastery-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.4s ease;
+    }
+
+    .mastery-fill-low  { background: #cbd5e1; }
+    .mastery-fill-mid  { background: linear-gradient(90deg, #f59e0b, #d97706); }
+    .mastery-fill-high { background: linear-gradient(90deg, #10b981, #059669); }
+
+    /* ── PROGRESS TRACK ──────────────────────────────── */
+    .progress-track {
+      width: 100%;
+      height: 4px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e, #16a34a);
+      width: 0;
+      transition: width 0.3s ease;
+      border-radius: 999px;
+    }
+
+    /* ── PRACTICE: CONFIG STRIP ──────────────────────── */
+    .config-strip {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 14px 20px;
+    }
+
+    .config-label {
+      display: block;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 5px;
+    }
+
+    .config-select,
+    .config-input {
+      width: 100%;
+      background: #f8fafc;
+      border: 1px solid rgba(15,23,42,0.1);
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-size: 0.875rem;
+      color: #0f172a;
+      font-family: inherit;
+      transition: border-color 0.12s, box-shadow 0.12s;
+      height: 36px;
+    }
+
+    .config-input { text-align: center; }
+
+    .config-select:focus,
+    .config-input:focus {
+      outline: none;
+      border-color: #93c5fd;
+      box-shadow: 0 0 0 3px rgba(147,197,253,0.3);
+    }
+
+    /* ── PRACTICE: SESSION BAR ───────────────────────── */
+    .session-bar {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 14px 20px;
+    }
+
+    /* ── PRACTICE: EXERCISE CARD ─────────────────────── */
+    .exercise-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 24px;
+    }
+
+    .exercise-prompt {
+      font-size: 1.0625rem;
+      font-weight: 600;
+      color: #0f172a;
+      letter-spacing: -0.01em;
+      line-height: 1.4;
+    }
+
+    /* ── ANSWER BUTTONS ──────────────────────────────── */
+    .answer-btn {
+      background: #f8fafc;
+      border: 1.5px solid rgba(15,23,42,0.1);
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, color 0.1s, box-shadow 0.1s;
+      color: #1e293b;
+      font-family: inherit;
+    }
+
+    .answer-btn:hover:not(:disabled) {
+      background: #eff6ff;
+      border-color: #93c5fd;
+      color: #1d4ed8;
+    }
+
+    .answer-btn:active:not(:disabled) {
+      background: #dbeafe;
+    }
+
+    .answer-btn.correct {
+      background: #dcfce7 !important;
+      border-color: #16a34a !important;
+      color: #15803d !important;
+      opacity: 1 !important;
+    }
+
+    .answer-btn.wrong {
+      background: #fee2e2 !important;
+      border-color: #dc2626 !important;
+      color: #b91c1c !important;
+      opacity: 1 !important;
+    }
+
+    .answer-btn.reveal-correct {
+      background: #dcfce7 !important;
+      border-color: #16a34a !important;
+      color: #15803d !important;
+      box-shadow: 0 0 0 3px rgba(22,163,74,0.2) !important;
+      opacity: 1 !important;
+    }
+
+    .interval-answer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .answer-btn-interval {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 12px 14px;
+      min-height: 60px;
+      width: 100%;
+      border-left: 3px solid #bfdbfe;
+    }
+
+    .answer-btn-interval:hover:not(:disabled) { border-left-color: #2563eb; }
+    .answer-btn-interval.correct              { border-left-color: #16a34a !important; }
+    .answer-btn-interval.wrong                { border-left-color: #dc2626 !important; }
+    .answer-btn-interval.reveal-correct       { border-left-color: #16a34a !important; }
+
+    .interval-number {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1;
+      margin-bottom: 2px;
+    }
+
+    .interval-name {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: #64748b;
+    }
+
+    /* ── LISTEN HINT ─────────────────────────────────── */
+    @keyframes pulse-attention {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.55; }
+    }
+
+    .listen-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: #f5f3ff;
+      border: 1px solid #c4b5fd;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #7c3aed;
+      animation: pulse-attention 2s ease-in-out infinite;
+    }
+
+    /* ── ACTION BUTTONS ──────────────────────────────── */
+    .btn-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      border-radius: 8px;
+      border: 1.5px solid transparent;
+      cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, opacity 0.1s;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: #1d4ed8;
+      color: #fff;
+      border-color: transparent;
+    }
+    .btn-primary:hover { background: #1e40af; }
+
+    .btn-play {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border-color: #bfdbfe;
+    }
+    .btn-play:hover { background: #dbeafe; border-color: #93c5fd; }
+
+    .btn-record {
+      background: #fff1f2;
+      color: #be123c;
+      border-color: #fecdd3;
+    }
+    .btn-record:hover { background: #ffe4e6; border-color: #fda4af; }
+
+    .btn-next {
+      background: #f8fafc;
+      color: #475569;
+      border-color: rgba(15,23,42,0.1);
+    }
+    .btn-next:hover:not(:disabled) { background: #f1f5f9; color: #1e293b; }
+    .btn-next:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-ghost {
+      background: transparent;
+      color: #94a3b8;
+      border-color: rgba(15,23,42,0.08);
+      padding: 6px 12px;
+      font-size: 0.8125rem;
+    }
+    .btn-ghost:hover { color: #64748b; background: #f8fafc; }
+
+    .icon {
+      display: inline-block;
+      fill: currentColor;
+      flex-shrink: 0;
+    }
+
+    .icon-12 { width: 12px; height: 12px; }
+    .icon-13 { width: 13px; height: 13px; }
+    .icon-14 { width: 14px; height: 14px; }
+
+    /* ── STAFF SVG ───────────────────────────────────── */
+    .staff-svg {
+      display: block;
+      width: 100%;
+      background: #fafafa;
+      border-radius: 8px;
+      border: 1px solid rgba(15,23,42,0.06);
+    }
+
+    /* ── MELODY TRAINER ──────────────────────────────── */
+    .melody-panel {
+      background: #f8fafc;
+      border-radius: 10px;
+      border: 1px solid rgba(15,23,42,0.06);
+      padding: 16px;
+    }
+
+    .melody-inner-card {
+      background: #fff;
+      border-radius: 8px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 14px;
+    }
+
+    /* ── SESSION SUMMARY ─────────────────────────────── */
+    .summary-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 28px;
+    }
+
+    /* ── SETTINGS ────────────────────────────────────── */
+    .settings-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 28px;
+    }
+
+    .settings-divider {
+      border: none;
+      border-top: 1px solid #f1f5f9;
+      margin: 20px 0;
+    }
+
+/* ── INLINE STYLE EXTRACTIONS ─────────────────────── */
+.app-title-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.dashboard-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.side-card-grow {
+  flex: 1;
+}
+
+.section-label-accent {
+  color: #059669;
+}
+
+.custom-card-copy {
+  font-size: 0.8125rem;
+  color: #047857;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+.btn-custom-primary {
+  width: 100%;
+  padding: 8px 0;
+  background: #059669;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s;
+}
+
+.btn-custom-primary:hover {
+  background: #047857;
+}
+
+.btn-custom-compact {
+  height: 36px;
+}
+
+.card-padded {
+  padding: 20px 24px;
+}
+
+.session-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.session-meta {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #334155;
+  margin: 0;
+}
+
+.exercise-card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.exercise-prompt-reset {
+  margin: 0;
+}
+
+.exercise-subprompt {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin: 0 0 12px;
+}
+
+.rhythm-display {
+  font-size: 1.5rem;
+  font-weight: 600;
+  text-align: center;
+  color: #334155;
+  margin: 0 0 12px;
+}
+
+.answer-options {
+  margin-top: 16px;
+}
+
+.melody-section-title,
+.settings-section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 10px;
+}
+
+.settings-section-title {
+  margin-bottom: 12px;
+}
+
+.melody-start-note-option {
+  padding: 4px 0;
+}
+
+.melody-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.metro-indicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #e2e8f0;
+}
+
+.bpm-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.bpm-input {
+  width: 64px;
+  border: 1px solid rgba(15,23,42,0.1);
+  border-radius: 6px;
+  padding: 4px 8px;
+  text-align: center;
+  font-size: 0.875rem;
+  font-family: inherit;
+}
+
+.staff-scroll {
+  overflow-x: auto;
+}
+
+.staff-caption {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.staff-centered-svg {
+  display: block;
+  margin: 0 auto;
+}
+
+.melody-actions,
+.exercise-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-melody-generate {
+  background: #eff0ff;
+  color: #4338ca;
+  border-color: #c7d2fe;
+}
+
+.btn-melody-generate:hover {
+  background: #e5e7ff;
+  border-color: #a5b4fc;
+}
+
+.message-box {
+  font-size: 0.875rem;
+  color: #475569;
+  min-height: 1.25em;
+  margin: 0;
+}
+
+.note-debug {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  min-height: 1em;
+  margin: 0;
+}
+
+.exercise-action-row {
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.exercise-feedback,
+.summary-text,
+.settings-status {
+  font-size: 0.875rem;
+  color: #475569;
+  margin: 0;
+}
+
+.exercise-feedback {
+  font-weight: 600;
+  min-height: 1.25em;
+}
+
+.summary-text {
+  margin: 4px 0 20px;
+}
+
+.settings-clef-option {
+  margin-bottom: 8px;
+}
+
+.settings-default-clef {
+  margin-bottom: 14px;
+}
+
+.settings-actions {
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.settings-status {
+  color: #64748b;
+  margin-top: 10px;
+}
+
+.skill-card-header,
+.skill-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.skill-attempts,
+.skill-mastery-value {
+  font-size: 0.75rem;
+}
+
+.skill-attempts {
+  color: #94a3b8;
+}
+
+.skill-mastery-value {
+  font-weight: 600;
+}
+
+.skill-mastery-low {
+  color: #94a3b8;
+}
+
+.skill-mastery-mid {
+  color: #d97706;
+}
+
+.skill-mastery-high {
+  color: #059669;
+}
