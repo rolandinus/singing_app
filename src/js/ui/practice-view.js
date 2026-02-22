@@ -9,6 +9,7 @@ function toIntervalLabel(value) {
 export class PracticeView {
   constructor(elements) {
     this.elements = elements;
+    this._currentChoiceButtons = new Map();
   }
 
   renderSessionMeta({ mode, index, total }) {
@@ -48,8 +49,10 @@ export class PracticeView {
     this.elements.standardExerciseBlock.classList.remove("hidden");
     this.elements.melodyTrainerPanel.classList.add("hidden");
     this.elements.answerOptions.innerHTML = "";
+    this._currentChoiceButtons.clear();
+    this.elements.answerOptions.className = "flex flex-wrap gap-2";
+    this.elements.exerciseSubPrompt.innerHTML = "";
     this.elements.rhythmDisplay.textContent = "";
-    this.elements.exerciseSubPrompt.textContent = "";
     clearStaff(this.elements.practiceStaff);
 
     this.setActionVisibility({ playPrompt: false, capturePitch: false, nextEnabled: false });
@@ -74,7 +77,8 @@ export class PracticeView {
           clef: exercise.clef,
           notes: [exercise.prompt.first, exercise.prompt.second],
         });
-        this.#renderChoices(exercise, handlers, true);
+        this.elements.answerOptions.className = "interval-answer-grid";
+        this.#renderIntervalChoices(exercise, handlers);
         break;
       }
 
@@ -89,8 +93,13 @@ export class PracticeView {
       case "interval_aural": {
         this.elements.exercisePrompt.textContent = "Höre das Intervall und identifiziere es.";
         drawStaff(this.elements.practiceStaff, { clef: exercise.clef });
+        const hint = document.createElement("span");
+        hint.className = "listen-hint";
+        hint.textContent = `♪ Klicke auf \u201EPrompt abspielen\u201C um das Intervall zu h\u00F6ren`;
+        this.elements.exerciseSubPrompt.appendChild(hint);
+        this.elements.answerOptions.className = "interval-answer-grid";
         this.setActionVisibility({ playPrompt: true, capturePitch: false, nextEnabled: false });
-        this.#renderChoices(exercise, handlers, true);
+        this.#renderIntervalChoices(exercise, handlers);
         break;
       }
 
@@ -135,6 +144,40 @@ export class PracticeView {
     }
   }
 
+  markChoiceResult(selectedChoice, correctChoice) {
+    const sel = String(selectedChoice);
+    const cor = String(correctChoice);
+
+    const selectedBtn = this._currentChoiceButtons.get(sel);
+    const correctBtn = this._currentChoiceButtons.get(cor);
+
+    if (selectedBtn) {
+      selectedBtn.classList.add(sel === cor ? "correct" : "wrong");
+    }
+    if (correctBtn && sel !== cor) {
+      correctBtn.classList.add("reveal-correct");
+    }
+  }
+
+  #renderIntervalChoices(exercise, handlers) {
+    exercise.choices.forEach((choice) => {
+      const asNumber = Number.parseInt(choice, 10);
+      const label = INTERVAL_LABELS[asNumber] ?? String(choice);
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "answer-btn answer-btn-interval";
+      button.dataset.choice = String(choice);
+      button.innerHTML =
+        `<span class="interval-number">${asNumber}</span>` +
+        `<span class="interval-name">${label}</span>`;
+      button.addEventListener("click", () => handlers.onChoice(choice));
+
+      this._currentChoiceButtons.set(String(choice), button);
+      this.elements.answerOptions.appendChild(button);
+    });
+  }
+
   #renderChoices(exercise, handlers, useIntervalLabel = false, useRhythmLabel = false) {
     exercise.choices.forEach((choice) => {
       const button = document.createElement("button");
@@ -154,6 +197,7 @@ export class PracticeView {
         handlers.onChoice(choice);
       });
 
+      this._currentChoiceButtons.set(String(choice), button);
       this.elements.answerOptions.appendChild(button);
     });
   }

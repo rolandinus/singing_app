@@ -200,7 +200,8 @@ export function drawNoteSequence(svgElement, { notes, clef = "treble", noteColor
 
   const startX = STAFF_MARGIN_LEFT + 110;
   const availableWidth = SVG_STAFF_WIDTH - startX - STAFF_MARGIN_LEFT;
-  const step = notes.length > 1 ? availableWidth / (notes.length - 1) : 0;
+  const rawStep = notes.length > 1 ? availableWidth / (notes.length - 1) : 0;
+  const step = Math.min(rawStep, 180);
 
   return notes.map((note, index) => {
     const xPosition = startX + index * step;

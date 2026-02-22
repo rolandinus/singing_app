@@ -9,34 +9,276 @@
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+    *, *::before, *::after { box-sizing: border-box; }
+
     body {
       font-family: 'Inter', sans-serif;
+      background: #f1f5f9;
+      min-height: 100vh;
+      margin: 0;
     }
 
-    .panel {
-      background: #ffffff;
-      border: 1px solid #e5e7eb;
-      border-radius: 0.75rem;
-      padding: 1rem;
+    /* ── APP BAR ─────────────────────────────────────── */
+    .app-bar {
+      background: #fff;
+      border-bottom: 1px solid rgba(15,23,42,0.08);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
 
-    .screen {
-      display: none;
+    .app-bar-inner {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
     }
 
-    .screen.active {
-      display: block;
+    .app-title {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: -0.015em;
+      flex-shrink: 0;
+    }
+
+    .app-tagline {
+      font-size: 0.8125rem;
+      color: #94a3b8;
+      font-weight: 400;
+      margin-left: 10px;
+    }
+
+    /* ── NAV TABS ────────────────────────────────────── */
+    .nav-tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .nav-btn {
+      padding: 6px 14px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #64748b;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      transition: background 0.1s, color 0.1s;
+      font-family: inherit;
+    }
+
+    .nav-btn:hover {
+      background: #f1f5f9;
+      color: #1e293b;
     }
 
     .nav-btn.active {
-      background: #1d4ed8;
-      color: #ffffff;
+      background: #eff6ff;
+      color: #1d4ed8;
+      font-weight: 600;
     }
 
+    /* ── PAGE WRAPPER ────────────────────────────────── */
+    .page-content {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* ── SCREENS ─────────────────────────────────────── */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ── SURFACES ────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+    }
+
+    /* ── DASHBOARD: HERO ─────────────────────────────── */
+    .dashboard-hero {
+      background: linear-gradient(130deg, #1e3a8a 0%, #2563eb 100%);
+      border-radius: 12px;
+      padding: 28px 32px;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .dashboard-hero::before {
+      content: '';
+      position: absolute;
+      right: -40px;
+      top: -40px;
+      width: 200px;
+      height: 200px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.05);
+      pointer-events: none;
+    }
+
+    .dashboard-hero::after {
+      content: '';
+      position: absolute;
+      right: 60px;
+      bottom: -60px;
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.04);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      opacity: 0.55;
+      margin-bottom: 6px;
+    }
+
+    .hero-title {
+      font-size: 1.3125rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+      letter-spacing: -0.015em;
+    }
+
+    .hero-body {
+      font-size: 0.875rem;
+      color: rgba(255,255,255,0.72);
+      margin-bottom: 22px;
+      line-height: 1.55;
+      max-width: 340px;
+    }
+
+    .hero-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: #fff;
+      color: #1d4ed8;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+      transition: box-shadow 0.15s, transform 0.1s;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-btn:hover {
+      box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+      transform: translateY(-1px);
+    }
+
+    .hero-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    }
+
+    /* ── DASHBOARD: SIDEBAR CARDS ────────────────────── */
+    .side-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 18px 20px;
+    }
+
+    .custom-card {
+      background: #f0fdf4;
+      border-radius: 12px;
+      border: 1px solid rgba(5,150,105,0.15);
+      padding: 18px 20px;
+    }
+
+    /* ── SECTION LABELS ──────────────────────────────── */
+    .section-label {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
+
+    /* ── SKILL MAP ───────────────────────────────────── */
+    .clef-header {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #cbd5e1;
+      padding: 6px 0 10px;
+      border-bottom: 1px solid #f1f5f9;
+      margin-bottom: 4px;
+    }
+
+    .skill-card {
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 14px 16px;
+      transition: box-shadow 0.15s, transform 0.12s;
+    }
+
+    .skill-card:hover {
+      box-shadow: 0 4px 14px rgba(15,23,42,0.08);
+      transform: translateY(-1px);
+    }
+
+    .skill-name {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .skill-level {
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: #94a3b8;
+      background: #f1f5f9;
+      padding: 2px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.03em;
+    }
+
+    .mastery-track {
+      width: 100%;
+      height: 5px;
+      background: #f1f5f9;
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 10px 0 7px;
+    }
+
+    .mastery-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.4s ease;
+    }
+
+    .mastery-fill-low  { background: #cbd5e1; }
+    .mastery-fill-mid  { background: linear-gradient(90deg, #f59e0b, #d97706); }
+    .mastery-fill-high { background: linear-gradient(90deg, #10b981, #059669); }
+
+    /* ── PROGRESS TRACK ──────────────────────────────── */
     .progress-track {
       width: 100%;
-      height: 10px;
-      background: #e5e7eb;
+      height: 4px;
+      background: #e2e8f0;
       border-radius: 999px;
       overflow: hidden;
     }
@@ -45,123 +287,409 @@
       height: 100%;
       background: linear-gradient(90deg, #22c55e, #16a34a);
       width: 0;
+      transition: width 0.3s ease;
+      border-radius: 999px;
     }
 
+    /* ── PRACTICE: CONFIG STRIP ──────────────────────── */
+    .config-strip {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 14px 20px;
+    }
+
+    .config-label {
+      display: block;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #94a3b8;
+      margin-bottom: 5px;
+    }
+
+    .config-select,
+    .config-input {
+      width: 100%;
+      background: #f8fafc;
+      border: 1px solid rgba(15,23,42,0.1);
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-size: 0.875rem;
+      color: #0f172a;
+      font-family: inherit;
+      transition: border-color 0.12s, box-shadow 0.12s;
+      height: 36px;
+    }
+
+    .config-input { text-align: center; }
+
+    .config-select:focus,
+    .config-input:focus {
+      outline: none;
+      border-color: #93c5fd;
+      box-shadow: 0 0 0 3px rgba(147,197,253,0.3);
+    }
+
+    /* ── PRACTICE: SESSION BAR ───────────────────────── */
+    .session-bar {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 14px 20px;
+    }
+
+    /* ── PRACTICE: EXERCISE CARD ─────────────────────── */
+    .exercise-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 24px;
+    }
+
+    .exercise-prompt {
+      font-size: 1.0625rem;
+      font-weight: 600;
+      color: #0f172a;
+      letter-spacing: -0.01em;
+      line-height: 1.4;
+    }
+
+    /* ── ANSWER BUTTONS ──────────────────────────────── */
     .answer-btn {
       background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 0.5rem;
-      padding: 0.5rem 0.75rem;
+      border: 1.5px solid rgba(15,23,42,0.1);
+      border-radius: 8px;
+      padding: 8px 18px;
       font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, color 0.1s, box-shadow 0.1s;
+      color: #1e293b;
+      font-family: inherit;
     }
 
-    .answer-btn:hover {
+    .answer-btn:hover:not(:disabled) {
       background: #eff6ff;
-      border-color: #60a5fa;
+      border-color: #93c5fd;
+      color: #1d4ed8;
+    }
+
+    .answer-btn:active:not(:disabled) {
+      background: #dbeafe;
+    }
+
+    .answer-btn.correct {
+      background: #dcfce7 !important;
+      border-color: #16a34a !important;
+      color: #15803d !important;
+      opacity: 1 !important;
+    }
+
+    .answer-btn.wrong {
+      background: #fee2e2 !important;
+      border-color: #dc2626 !important;
+      color: #b91c1c !important;
+      opacity: 1 !important;
+    }
+
+    .answer-btn.reveal-correct {
+      background: #dcfce7 !important;
+      border-color: #16a34a !important;
+      color: #15803d !important;
+      box-shadow: 0 0 0 3px rgba(22,163,74,0.2) !important;
+      opacity: 1 !important;
+    }
+
+    .interval-answer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .answer-btn-interval {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 12px 14px;
+      min-height: 60px;
+      width: 100%;
+      border-left: 3px solid #bfdbfe;
+    }
+
+    .answer-btn-interval:hover:not(:disabled) { border-left-color: #2563eb; }
+    .answer-btn-interval.correct              { border-left-color: #16a34a !important; }
+    .answer-btn-interval.wrong                { border-left-color: #dc2626 !important; }
+    .answer-btn-interval.reveal-correct       { border-left-color: #16a34a !important; }
+
+    .interval-number {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #0f172a;
+      line-height: 1;
+      margin-bottom: 2px;
+    }
+
+    .interval-name {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: #64748b;
+    }
+
+    /* ── LISTEN HINT ─────────────────────────────────── */
+    @keyframes pulse-attention {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.55; }
+    }
+
+    .listen-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: #f5f3ff;
+      border: 1px solid #c4b5fd;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #7c3aed;
+      animation: pulse-attention 2s ease-in-out infinite;
+    }
+
+    /* ── ACTION BUTTONS ──────────────────────────────── */
+    .btn-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      border-radius: 8px;
+      border: 1.5px solid transparent;
+      cursor: pointer;
+      transition: background 0.1s, border-color 0.1s, opacity 0.1s;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: #1d4ed8;
+      color: #fff;
+      border-color: transparent;
+    }
+    .btn-primary:hover { background: #1e40af; }
+
+    .btn-play {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border-color: #bfdbfe;
+    }
+    .btn-play:hover { background: #dbeafe; border-color: #93c5fd; }
+
+    .btn-record {
+      background: #fff1f2;
+      color: #be123c;
+      border-color: #fecdd3;
+    }
+    .btn-record:hover { background: #ffe4e6; border-color: #fda4af; }
+
+    .btn-next {
+      background: #f8fafc;
+      color: #475569;
+      border-color: rgba(15,23,42,0.1);
+    }
+    .btn-next:hover:not(:disabled) { background: #f1f5f9; color: #1e293b; }
+    .btn-next:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-ghost {
+      background: transparent;
+      color: #94a3b8;
+      border-color: rgba(15,23,42,0.08);
+      padding: 6px 12px;
+      font-size: 0.8125rem;
+    }
+    .btn-ghost:hover { color: #64748b; background: #f8fafc; }
+
+    /* ── STAFF SVG ───────────────────────────────────── */
+    .staff-svg {
+      display: block;
+      width: 100%;
+      background: #fafafa;
+      border-radius: 8px;
+      border: 1px solid rgba(15,23,42,0.06);
+    }
+
+    /* ── MELODY TRAINER ──────────────────────────────── */
+    .melody-panel {
+      background: #f8fafc;
+      border-radius: 10px;
+      border: 1px solid rgba(15,23,42,0.06);
+      padding: 16px;
+    }
+
+    .melody-inner-card {
+      background: #fff;
+      border-radius: 8px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 14px;
+    }
+
+    /* ── SESSION SUMMARY ─────────────────────────────── */
+    .summary-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 28px;
+    }
+
+    /* ── SETTINGS ────────────────────────────────────── */
+    .settings-card {
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid rgba(15,23,42,0.07);
+      padding: 28px;
+    }
+
+    .settings-divider {
+      border: none;
+      border-top: 1px solid #f1f5f9;
+      margin: 20px 0;
     }
   </style>
 </head>
-<body class="bg-slate-100 min-h-screen p-4 md:p-8">
-<div class="max-w-6xl mx-auto space-y-4">
-  <div class="panel">
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-bold text-blue-700">Sight-Singing Trainer</h1>
-        <p class="text-slate-600">Progressive Übungen für Notenlesen, Gehör und Singen</p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button id="navDashboardBtn" class="nav-btn active px-4 py-2 rounded-lg border border-slate-300 bg-white font-semibold">Dashboard</button>
-        <button id="navPracticeBtn" class="nav-btn px-4 py-2 rounded-lg border border-slate-300 bg-white font-semibold">Üben</button>
-        <button id="navSettingsBtn" class="nav-btn px-4 py-2 rounded-lg border border-slate-300 bg-white font-semibold">Einstellungen</button>
-      </div>
+<body>
+
+<!-- ── APP BAR ──────────────────────────────────────── -->
+<header class="app-bar">
+  <div class="app-bar-inner">
+    <div style="display:flex;align-items:center">
+      <span class="app-title">Sight-Singing Trainer</span>
+      <span class="app-tagline hidden sm:inline">Notenlesen · Gehör · Singen</span>
     </div>
+    <nav class="nav-tabs">
+      <button id="navDashboardBtn" class="nav-btn active">Dashboard</button>
+      <button id="navPracticeBtn" class="nav-btn">Üben</button>
+      <button id="navSettingsBtn" class="nav-btn">Einstellungen</button>
+    </nav>
   </div>
+</header>
 
-  <section id="dashboardScreen" class="screen active space-y-4">
+<div class="page-content">
+
+  <!-- ── DASHBOARD ──────────────────────────────────── -->
+  <section id="dashboardScreen" class="screen active space-y-5">
+
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div class="panel">
-        <h2 class="font-semibold text-slate-700 mb-2">Geführte Session</h2>
-        <p id="dashboardSummary" class="text-sm text-slate-600 mb-3">Lade Fortschritt...</p>
-        <button id="startGuidedBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg">Geführte Session starten</button>
+
+      <!-- Primary CTA -->
+      <div class="dashboard-hero md:col-span-2">
+        <div class="eyebrow">Geführtes Programm</div>
+        <div class="hero-title">Nächste Session starten</div>
+        <p id="dashboardSummary" class="hero-body">Lade Fortschritt…</p>
+        <button id="startGuidedBtn" class="hero-btn">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M4 2.5l9 5.5-9 5.5V2.5z" fill="currentColor"/>
+          </svg>
+          Session starten
+        </button>
       </div>
 
-      <div class="panel">
-        <h2 class="font-semibold text-slate-700 mb-2">Benutzerdefiniert</h2>
-        <p class="text-sm text-slate-600 mb-3">Konfiguriere eine eigene Übungsrunde.</p>
-        <button id="goCustomFromDashboardBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg">Zu Custom Practice</button>
+      <!-- Sidebar -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="side-card" style="flex:1">
+          <div class="section-label">Letzte Sessions</div>
+          <div id="recentSessionsContainer" class="text-sm text-slate-500 space-y-1.5"></div>
+        </div>
+        <div class="custom-card">
+          <div class="section-label" style="color:#059669">Eigene Übung</div>
+          <p style="font-size:0.8125rem;color:#047857;margin-bottom:14px;line-height:1.5">
+            Wähle Skill, Level und Anzahl frei.
+          </p>
+          <button id="goCustomFromDashboardBtn" style="width:100%;padding:8px 0;background:#059669;color:#fff;font-size:0.875rem;font-weight:600;border-radius:8px;border:none;cursor:pointer;font-family:inherit;transition:background 0.1s" onmouseover="this.style.background='#047857'" onmouseout="this.style.background='#059669'">
+            Benutzerdefiniert
+          </button>
+        </div>
       </div>
 
-      <div class="panel">
-        <h2 class="font-semibold text-slate-700 mb-2">Letzte Sessions</h2>
-        <div id="recentSessionsContainer" class="text-sm text-slate-600 space-y-2"></div>
-      </div>
     </div>
 
-    <div class="panel">
-      <h2 class="font-semibold text-slate-700 mb-3">Skill Map</h2>
-      <div id="skillMapContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+    <!-- Skill Map -->
+    <div class="card" style="padding:20px 24px">
+      <div class="section-label">Skill Map</div>
+      <div id="skillMapContainer" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
     </div>
+
   </section>
 
-  <section id="practiceScreen" class="screen space-y-4">
-    <div class="panel grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-      <div>
-        <label class="block text-xs font-semibold text-slate-600 mb-1">Familie</label>
-        <select id="familySelect" class="w-full border border-slate-300 rounded-md px-2 py-2"></select>
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-600 mb-1">Skill</label>
-        <select id="skillSelect" class="w-full border border-slate-300 rounded-md px-2 py-2"></select>
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-600 mb-1">Schlüssel</label>
-        <select id="clefSelect" class="w-full border border-slate-300 rounded-md px-2 py-2"></select>
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-600 mb-1">Level</label>
-        <select id="levelSelect" class="w-full border border-slate-300 rounded-md px-2 py-2"></select>
-      </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-600 mb-1">Anzahl</label>
-        <input id="countInput" type="number" min="1" max="50" value="10" class="w-full border border-slate-300 rounded-md px-2 py-2" />
-      </div>
-      <div>
-        <button id="startCustomBtn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 rounded-lg">Custom Start</button>
-      </div>
-    </div>
+  <!-- ── PRACTICE ────────────────────────────────────── -->
+  <section id="practiceScreen" class="screen space-y-3">
 
-    <div class="panel space-y-3">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-        <p id="sessionMeta" class="font-semibold text-slate-700">Keine aktive Session</p>
-        <div class="flex gap-2">
-          <button id="endSessionBtn" class="px-3 py-2 rounded-md border border-slate-300 font-semibold">Session beenden</button>
+    <!-- Config strip -->
+    <div class="config-strip">
+      <div class="grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
+        <div>
+          <span class="config-label">Familie</span>
+          <select id="familySelect" class="config-select"></select>
+        </div>
+        <div>
+          <span class="config-label">Skill</span>
+          <select id="skillSelect" class="config-select"></select>
+        </div>
+        <div>
+          <span class="config-label">Schlüssel</span>
+          <select id="clefSelect" class="config-select"></select>
+        </div>
+        <div>
+          <span class="config-label">Level</span>
+          <select id="levelSelect" class="config-select"></select>
+        </div>
+        <div>
+          <span class="config-label">Anzahl</span>
+          <input id="countInput" type="number" min="1" max="50" value="10" class="config-input" />
+        </div>
+        <div>
+          <button id="startCustomBtn" style="width:100%;height:36px;background:#059669;color:#fff;font-weight:600;font-size:0.875rem;border-radius:7px;border:none;cursor:pointer;font-family:inherit;transition:background 0.1s" onmouseover="this.style.background='#047857'" onmouseout="this.style.background='#059669'">
+            Start
+          </button>
         </div>
       </div>
-      <div class="progress-track"><div id="sessionProgressBar" class="progress-fill"></div></div>
     </div>
 
-    <div class="panel space-y-3">
-      <h2 id="exercisePrompt" class="text-lg font-semibold text-slate-800">Übung wird geladen...</h2>
+    <!-- Session bar -->
+    <div class="session-bar">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <p id="sessionMeta" style="font-size:0.875rem;font-weight:600;color:#334155;margin:0">Keine aktive Session</p>
+        <button id="endSessionBtn" class="btn-action btn-ghost">Session beenden</button>
+      </div>
+      <div class="progress-track">
+        <div id="sessionProgressBar" class="progress-fill"></div>
+      </div>
+    </div>
+
+    <!-- Exercise area -->
+    <div class="exercise-card" style="display:flex;flex-direction:column;gap:16px">
+      <h2 id="exercisePrompt" class="exercise-prompt" style="margin:0">Wähle oben eine Übung aus</h2>
+
       <div id="standardExerciseBlock">
-        <p id="exerciseSubPrompt" class="text-sm text-slate-600"></p>
-        <p id="rhythmDisplay" class="text-2xl font-semibold text-center text-slate-700"></p>
-        <div class="overflow-x-auto">
-          <svg id="practiceStaff" width="800" height="180" class="mx-auto bg-white border border-slate-300 rounded-lg"></svg>
+        <p id="exerciseSubPrompt" style="font-size:0.875rem;color:#64748b;margin:0 0 12px"></p>
+        <p id="rhythmDisplay" style="font-size:1.5rem;font-weight:600;text-align:center;color:#334155;margin:0 0 12px"></p>
+        <div>
+          <svg id="practiceStaff" viewBox="0 0 800 180" class="staff-svg"></svg>
         </div>
-        <div id="answerOptions" class="flex flex-wrap gap-2"></div>
+        <div id="answerOptions" class="flex flex-wrap gap-2" style="margin-top:16px"></div>
       </div>
 
-      <div id="melodyTrainerPanel" class="hidden border border-slate-200 rounded-lg p-3 bg-slate-50 space-y-3">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="bg-white border border-slate-200 rounded-md p-3">
-            <h3 class="font-semibold text-slate-700 mb-2">Erste Note (Melodie)</h3>
-            <label class="flex items-center gap-2 text-sm py-1"><input type="radio" name="startNote" value="random" checked> Zufällig</label>
-            <label class="flex items-center gap-2 text-sm py-1"><input type="radio" name="startNote" value="C2"> C2</label>
-            <label class="flex items-center gap-2 text-sm py-1"><input type="radio" name="startNote" value="C4"> C4</label>
+      <!-- Melody trainer panel -->
+      <div id="melodyTrainerPanel" class="hidden melody-panel space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="melody-inner-card">
+            <h3 style="font-size:0.875rem;font-weight:600;color:#1e293b;margin:0 0 10px">Erste Note (Melodie)</h3>
+            <label class="flex items-center gap-2 text-sm" style="padding:4px 0"><input type="radio" name="startNote" value="random" checked> Zufällig</label>
+            <label class="flex items-center gap-2 text-sm" style="padding:4px 0"><input type="radio" name="startNote" value="C2"> C2</label>
+            <label class="flex items-center gap-2 text-sm" style="padding:4px 0"><input type="radio" name="startNote" value="C4"> C4</label>
           </div>
-
-          <div class="bg-white border border-slate-200 rounded-md p-3">
-            <h3 class="font-semibold text-slate-700 mb-2">Erlaubte Intervalle</h3>
+          <div class="melody-inner-card">
+            <h3 style="font-size:0.875rem;font-weight:600;color:#1e293b;margin:0 0 10px">Erlaubte Intervalle</h3>
             <div class="grid grid-cols-2 gap-1 text-sm">
               <label class="flex items-center gap-2"><input type="checkbox" name="interval" value="0" checked> Prime</label>
               <label class="flex items-center gap-2"><input type="checkbox" name="interval" value="1" checked> Sekunde</label>
@@ -175,32 +703,32 @@
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-3 bg-white border border-slate-200 rounded-md p-3">
+        <div class="melody-inner-card" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
           <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="visualMetronomeToggle"> Visueller Metronom</label>
-          <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="liveFeedbackToggle"> Live-Feedback bei falschem Ton</label>
-          <div id="visualMetronomeIndicator" class="w-5 h-5 rounded-full bg-slate-300"></div>
-          <label for="bpmInput" class="text-sm font-medium text-slate-700 ml-2">Tempo (BPM)</label>
-          <input type="number" id="bpmInput" min="40" max="240" value="90" class="w-20 border border-slate-300 rounded-md px-2 py-1 text-center" />
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="liveFeedbackToggle"> Live-Feedback</label>
+          <div id="visualMetronomeIndicator" style="width:14px;height:14px;border-radius:50%;background:#e2e8f0"></div>
+          <label for="bpmInput" style="font-size:0.875rem;font-weight:500;color:#475569">BPM</label>
+          <input type="number" id="bpmInput" min="40" max="240" value="90" style="width:64px;border:1px solid rgba(15,23,42,0.1);border-radius:6px;padding:4px 8px;text-align:center;font-size:0.875rem;font-family:inherit" />
         </div>
 
-        <div class="overflow-x-auto">
-          <h3 class="text-sm font-semibold text-slate-700 mb-1">Generierte Melodie</h3>
-          <svg id="staffSvg" width="800" height="180" class="mx-auto bg-white border border-slate-300 rounded-lg"></svg>
+        <div style="overflow-x:auto">
+          <div style="font-size:0.6875rem;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px">Generierte Melodie</div>
+          <svg id="staffSvg" width="800" height="180" class="staff-svg" style="display:block;margin:0 auto"></svg>
         </div>
-        <div class="overflow-x-auto">
-          <h3 class="text-sm font-semibold text-slate-700 mb-1">Aufgenommene Melodie</h3>
-          <svg id="recordedStaffSvg" width="800" height="180" class="mx-auto bg-white border border-slate-300 rounded-lg"></svg>
-        </div>
-
-        <div class="flex flex-wrap gap-2">
-          <button id="generateNotesBtn" class="bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold py-2 px-4 rounded-lg">Neue Melodie</button>
-          <button id="playNotesBtn" class="bg-green-500 hover:bg-green-600 text-white text-sm font-semibold py-2 px-4 rounded-lg">Melodie abspielen</button>
-          <button id="recordBtn" class="bg-red-500 hover:bg-red-600 text-white text-sm font-semibold py-2 px-4 rounded-lg">Aufnahme starten</button>
-          <button id="stopBtn" class="bg-gray-500 hover:bg-gray-600 text-white text-sm font-semibold py-2 px-4 rounded-lg">Stopp</button>
+        <div style="overflow-x:auto">
+          <div style="font-size:0.6875rem;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:#94a3b8;margin-bottom:6px">Aufgenommene Melodie</div>
+          <svg id="recordedStaffSvg" width="800" height="180" class="staff-svg" style="display:block;margin:0 auto"></svg>
         </div>
 
-        <p id="messageBox" class="text-sm text-slate-700 min-h-[1.25em]"></p>
-        <p id="detectedNoteDebug" class="text-xs text-slate-500 min-h-[1em]"></p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <button id="generateNotesBtn" class="btn-action" style="background:#eff0ff;color:#4338ca;border-color:#c7d2fe">Neue Melodie</button>
+          <button id="playNotesBtn" class="btn-action btn-play">Melodie abspielen</button>
+          <button id="recordBtn" class="btn-action btn-record">Aufnahme starten</button>
+          <button id="stopBtn" class="btn-action btn-next">Stopp</button>
+        </div>
+
+        <p id="messageBox" style="font-size:0.875rem;color:#475569;min-height:1.25em;margin:0"></p>
+        <p id="detectedNoteDebug" style="font-size:0.75rem;color:#94a3b8;min-height:1em;margin:0"></p>
 
         <div class="hidden">
           <button id="continuousDetectionBtn">Fortlaufende Notenerkennung starten</button>
@@ -210,41 +738,60 @@
         </div>
       </div>
 
-      <div class="flex flex-wrap gap-2">
-        <button id="playPromptBtn" class="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">Prompt abspielen</button>
-        <button id="capturePitchBtn" class="px-4 py-2 rounded-md bg-rose-600 hover:bg-rose-700 text-white font-semibold">Singen aufnehmen</button>
-        <button id="nextExerciseBtn" class="px-4 py-2 rounded-md bg-slate-700 hover:bg-slate-800 text-white font-semibold">Nächste Übung</button>
+      <!-- Action row -->
+      <div style="display:flex;flex-wrap:wrap;gap:8px;padding-top:16px;border-top:1px solid #f1f5f9">
+        <button id="playPromptBtn" class="btn-action btn-play">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 2.5l9 5.5-9 5.5V2.5z" fill="currentColor"/></svg>
+          Prompt abspielen
+        </button>
+        <button id="capturePitchBtn" class="btn-action btn-record">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5" fill="currentColor"/></svg>
+          Singen aufnehmen
+        </button>
+        <button id="nextExerciseBtn" class="btn-action btn-next">
+          Nächste Übung
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3l7 5-7 5V3z" fill="currentColor"/></svg>
+        </button>
       </div>
-      <p id="exerciseFeedback" class="text-sm font-semibold text-slate-700"></p>
+
+      <p id="exerciseFeedback" style="font-size:0.875rem;font-weight:600;color:#475569;min-height:1.25em;margin:0"></p>
     </div>
 
-    <div id="sessionSummaryPanel" class="panel hidden">
-      <h2 class="text-lg font-semibold text-slate-800">Session Summary</h2>
-      <p id="sessionSummaryText" class="text-sm text-slate-700"></p>
-      <button id="backToDashboardBtn" class="mt-3 px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold">Zum Dashboard</button>
+    <!-- Session summary -->
+    <div id="sessionSummaryPanel" class="summary-card hidden">
+      <div class="section-label">Session abgeschlossen</div>
+      <p id="sessionSummaryText" style="font-size:0.875rem;color:#475569;margin:4px 0 20px"></p>
+      <button id="backToDashboardBtn" class="btn-action btn-primary">Zum Dashboard</button>
     </div>
+
   </section>
 
+  <!-- ── SETTINGS ────────────────────────────────────── -->
   <section id="settingsScreen" class="screen">
-    <div class="panel grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
-        <h2 class="font-semibold text-slate-700 mb-2">Clefs</h2>
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="settingClefTreble" /> Treble</label>
-        <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="settingClefBass" /> Bass</label>
-      </div>
-      <div>
-        <h2 class="font-semibold text-slate-700 mb-2">Training</h2>
-        <label class="block text-sm mb-1">Standard-Clef</label>
-        <select id="settingDefaultClef" class="w-full border border-slate-300 rounded-md px-2 py-2 mb-3"></select>
-        <label class="block text-sm mb-1">Tagesziel (Übungen)</label>
-        <input type="number" id="settingDailyGoal" min="5" max="100" class="w-full border border-slate-300 rounded-md px-2 py-2" />
-      </div>
-      <div class="md:col-span-2">
-        <button id="saveSettingsBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-lg">Einstellungen speichern</button>
-        <p id="settingsStatus" class="text-sm text-slate-600 mt-2"></p>
+    <div class="settings-card">
+      <div class="section-label">Einstellungen</div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-2">
+        <div>
+          <h2 style="font-size:0.875rem;font-weight:600;color:#1e293b;margin:0 0 12px">Schlüssel</h2>
+          <label class="flex items-center gap-2 text-sm" style="margin-bottom:8px"><input type="checkbox" id="settingClefTreble" /> Violinschlüssel (Treble)</label>
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" id="settingClefBass" /> Bassschlüssel (Bass)</label>
+        </div>
+        <div>
+          <h2 style="font-size:0.875rem;font-weight:600;color:#1e293b;margin:0 0 12px">Training</h2>
+          <span class="config-label">Standard-Schlüssel</span>
+          <select id="settingDefaultClef" class="config-select" style="margin-bottom:14px"></select>
+          <span class="config-label">Tagesziel (Übungen)</span>
+          <input type="number" id="settingDailyGoal" min="5" max="100" class="config-input" />
+        </div>
+        <div class="md:col-span-2" style="padding-top:16px;border-top:1px solid #f1f5f9">
+          <button id="saveSettingsBtn" class="btn-action btn-primary">Einstellungen speichern</button>
+          <p id="settingsStatus" style="font-size:0.875rem;color:#64748b;margin-top:10px"></p>
+        </div>
       </div>
     </div>
   </section>
+
 </div>
 
 <script type="module" src="./src/js/main.js"></script>
