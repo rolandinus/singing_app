@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { useAppStore } from '../src/state/use-app-store';
+import { t } from '../src/core/i18n/translator';
 
 export default function RootLayout() {
   const bootstrap = useAppStore((s) => s.bootstrap);
+  const locale = useAppStore((s) => s.settings.locale);
 
   useEffect(() => {
     void bootstrap();
@@ -11,10 +13,10 @@ export default function RootLayout() {
 
   return (
     <Stack>
-      <Stack.Screen name="index" options={{ title: 'Dashboard' }} />
-      <Stack.Screen name="practice" options={{ title: 'Üben' }} />
-      <Stack.Screen name="settings" options={{ title: 'Einstellungen' }} />
-      <Stack.Screen name="summary" options={{ title: 'Session Summary' }} />
+      <Stack.Screen name="index" options={{ title: t(locale, 'nav_dashboard') }} />
+      <Stack.Screen name="practice" options={{ title: t(locale, 'nav_practice') }} />
+      <Stack.Screen name="settings" options={{ title: t(locale, 'nav_settings') }} />
+      <Stack.Screen name="summary" options={{ title: t(locale, 'nav_summary') }} />
     </Stack>
   );
 }

@@ -52,6 +52,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     4: 35,
     5: 30,
   },
+  locale: 'de',
 };
 
 export const CLEF_NOTE_RANGES: Record<Clef, { minMidi: number; maxMidi: number }> = {

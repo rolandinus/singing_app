@@ -150,8 +150,8 @@ export class ExerciseGenerator {
 
   private generateRhythm(level: number, clef: Clef): Exercise {
     const count = Math.max(2, Math.min(RHYTHM_PATTERNS.length, level + 1));
-    const pool = RHYTHM_PATTERNS.slice(0, count);
-    const pattern = randomChoice(pool as unknown as typeof RHYTHM_PATTERNS);
+    const pool = [...RHYTHM_PATTERNS.slice(0, count)];
+    const pattern: (typeof RHYTHM_PATTERNS)[number] = randomChoice(pool);
 
     return {
       id: createExerciseId('rhythm_id'),

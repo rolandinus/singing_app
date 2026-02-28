@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CLEF_OPTIONS, DEFAULT_SETTINGS } from '../../core/config/curriculum';
-import type { AppSettings, ProgressRecord, SessionRecord } from '../../core/types';
+import type { AppSettings, Locale, ProgressRecord, SessionRecord } from '../../core/types';
 
 const SETTINGS_KEY = 'ss_mobile_settings_v1';
 const DATA_KEY = 'ss_mobile_data_v1';
@@ -9,6 +9,10 @@ type PersistedData = {
   progress: Record<string, ProgressRecord>;
   sessions: SessionRecord[];
 };
+
+function sanitizeLocale(value: unknown): Locale {
+  return value === 'en' ? 'en' : 'de';
+}
 
 function sanitizeSettings(candidate: Partial<AppSettings> | null | undefined): AppSettings {
   const merged: AppSettings = {
@@ -32,6 +36,7 @@ function sanitizeSettings(candidate: Partial<AppSettings> | null | undefined): A
     ...merged,
     enabledClefs,
     defaultClef,
+    locale: sanitizeLocale(merged.locale),
     dailyGoalExercises: Number.isFinite(Number(merged.dailyGoalExercises))
       ? Math.max(5, Math.min(100, Number(merged.dailyGoalExercises)))
       : DEFAULT_SETTINGS.dailyGoalExercises,

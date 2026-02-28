@@ -14,8 +14,8 @@ type StoreState = {
   currentExercise: Exercise | null;
   sessionMeta: { mode: 'guided' | 'custom'; index: number; total: number };
   feedback: { text: string; isCorrect: boolean };
+  answerState: { selectedChoice: string | null; expectedChoice: string | null };
   summary: SessionSummary | null;
-  selectedFamily: 'visual' | 'aural' | 'singing';
   selectedSkill: SkillKey;
   selectedClef: Clef;
   selectedLevel: number;
@@ -28,7 +28,6 @@ type StoreState = {
   nextExercise: () => Promise<void>;
   endSession: () => Promise<void>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<void>;
-  setSelectedFamily: (value: 'visual' | 'aural' | 'singing') => void;
   setSelectedSkill: (value: SkillKey) => void;
   setSelectedClef: (value: Clef) => void;
   setSelectedLevel: (value: number) => void;
@@ -48,8 +47,8 @@ export const useAppStore = create<StoreState>((set, get) => ({
   currentExercise: null,
   sessionMeta: { mode: 'guided', index: 0, total: 0 },
   feedback: { text: '', isCorrect: false },
+  answerState: { selectedChoice: null, expectedChoice: null },
   summary: null,
-  selectedFamily: 'visual',
   selectedSkill: firstVisualSkill(),
   selectedClef: 'treble',
   selectedLevel: 1,
@@ -86,6 +85,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       currentExercise: service.getCurrentExercise(),
       sessionMeta: service.getSessionMeta(),
       feedback: { text: '', isCorrect: false },
+      answerState: { selectedChoice: null, expectedChoice: null },
       summary: null,
     });
   },
@@ -108,6 +108,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       currentExercise: service.getCurrentExercise(),
       sessionMeta: service.getSessionMeta(),
       feedback: { text: '', isCorrect: false },
+      answerState: { selectedChoice: null, expectedChoice: null },
       summary: null,
     });
   },
@@ -118,6 +119,10 @@ export const useAppStore = create<StoreState>((set, get) => ({
 
     set({
       feedback: { text: outcome.feedback, isCorrect: outcome.evaluation.correct },
+      answerState: {
+        selectedChoice: outcome.selectedChoice,
+        expectedChoice: outcome.expectedChoice,
+      },
       sessionMeta: service.getSessionMeta(),
     });
     get().refreshDashboard();
@@ -132,6 +137,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         summary: result.summary,
         currentExercise: null,
         sessionMeta: { mode: 'guided', index: 0, total: 0 },
+        answerState: { selectedChoice: null, expectedChoice: null },
       });
       get().refreshDashboard();
       return;
@@ -141,6 +147,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       currentExercise: service.getCurrentExercise(),
       sessionMeta: service.getSessionMeta(),
       feedback: { text: '', isCorrect: false },
+      answerState: { selectedChoice: null, expectedChoice: null },
     });
   },
 
@@ -152,6 +159,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       summary: ended.summary,
       currentExercise: null,
       sessionMeta: { mode: 'guided', index: 0, total: 0 },
+      answerState: { selectedChoice: null, expectedChoice: null },
     });
     get().refreshDashboard();
   },
@@ -162,10 +170,6 @@ export const useAppStore = create<StoreState>((set, get) => ({
     get().refreshDashboard();
   },
 
-  setSelectedFamily(value) {
-    const first = (SKILL_DEFINITIONS.find((s) => s.family === value)?.key ?? firstVisualSkill()) as SkillKey;
-    set({ selectedFamily: value, selectedSkill: first });
-  },
   setSelectedSkill(value) { set({ selectedSkill: value }); },
   setSelectedClef(value) { set({ selectedClef: value }); },
   setSelectedLevel(value) { set({ selectedLevel: Math.max(1, Math.min(5, value)) }); },

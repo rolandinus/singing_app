@@ -1,4 +1,5 @@
 export type Clef = 'treble' | 'bass';
+export type Locale = 'de' | 'en';
 export type ExerciseFamily = 'visual' | 'aural' | 'singing';
 export type SkillKey =
   | 'note_naming'
@@ -69,4 +70,5 @@ export type AppSettings = {
   defaultClef: Clef;
   dailyGoalExercises: number;
   pitchToleranceCentsByLevel: Record<number, number>;
+  locale: Locale;
 };
