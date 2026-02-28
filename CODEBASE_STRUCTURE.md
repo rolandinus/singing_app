@@ -187,4 +187,5 @@
 ## Notes
 
 - Browser app and mobile app currently coexist during migration.
-- Mobile Phase 2 scope is visual training parity first; aural/singing flows are deferred in the RN UI.
+- Mobile now supports visual + aural interval flows in RN UI.
+- Singing capture/recording flows remain deferred in the RN UI.

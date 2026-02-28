@@ -1,8 +1,9 @@
-# Android QA Report (Phase 3)
+# Android QA Report (Phase 4)
 
 Date: 2026-02-22
 Project: `mobile/` (Expo React Native)
-Scope: Visual training only (`note_naming`, `interval_visual`, `rhythm_id`)
+Scope: Visual + aural training (`note_naming`, `interval_visual`, `rhythm_id`, `interval_aural`)
+Deferred: Singing capture/recording (`sing_note`, `sing_interval`, `sing_melody`)
 
 ## Automated Preflight (Executed)
 
@@ -44,14 +45,15 @@ Status legend: `PASS` | `FAIL` | `BLOCKED` | `NOT_RUN`
 
 ### Guided Session Flow
 - Start guided session from dashboard: `NOT_RUN`
-- Session contains visual exercises only: `NOT_RUN`
+- Session contains visual + aural exercises only: `NOT_RUN`
+- Aural interval prompt playback produces two tones: `NOT_RUN`
 - Progress bar advances per completed exercise: `NOT_RUN`
 - Answer selection shows feedback + highlights: `NOT_RUN`
 - Next button disabled pre-answer and enabled post-answer: `NOT_RUN`
 - End session navigates to summary with correct totals/accuracy: `NOT_RUN`
 
 ### Custom Session Flow
-- Select each visual skill and both clefs: `NOT_RUN`
+- Select each visual/aural skill and both clefs: `NOT_RUN`
 - Level/count input validation and clamping: `NOT_RUN`
 - Custom session follows selected skill/clef: `NOT_RUN`
 - Ending custom session updates recent sessions: `NOT_RUN`
