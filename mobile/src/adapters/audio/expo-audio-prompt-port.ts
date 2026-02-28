@@ -87,7 +87,7 @@ function buildSineWaveWavDataUri(frequency: number, durationMs = 650): string {
   return `data:audio/wav;base64,${base64}`;
 }
 
-async function waitForSoundCompletion(sound: Audio.Sound): Promise<void> {
+async function waitForSoundCompletion(sound: Audio.Sound, expectedDurationMs: number): Promise<void> {
   await new Promise<void>((resolve) => {
     let settled = false;
     const done = () => {
@@ -99,16 +99,22 @@ async function waitForSoundCompletion(sound: Audio.Sound): Promise<void> {
 
     sound.setOnPlaybackStatusUpdate((status) => {
       if (!status.isLoaded) {
-        done();
+        if (status.error) {
+          done();
+        }
         return;
       }
 
       if (status.didJustFinish) {
         done();
+        return;
+      }
+      if ((status.durationMillis ?? 0) > 0 && (status.positionMillis ?? 0) >= (status.durationMillis ?? 0) - 8) {
+        done();
       }
     });
 
-    setTimeout(done, 2000);
+    setTimeout(done, Math.max(2000, expectedDurationMs + 900));
   });
 }
 
@@ -136,10 +142,11 @@ export class ExpoAudioPromptPort {
   private async playTone(note: string) {
     const midi = scientificToMidi(note);
     const frequency = midiToFrequency(midi);
-    const uri = buildSineWaveWavDataUri(frequency);
+    const durationMs = 650;
+    const uri = buildSineWaveWavDataUri(frequency, durationMs);
     const created = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
     this.activeSound = created.sound;
-    await waitForSoundCompletion(created.sound);
+    await waitForSoundCompletion(created.sound, durationMs);
     await created.sound.unloadAsync();
     this.activeSound = null;
   }
