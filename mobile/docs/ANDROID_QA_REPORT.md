@@ -2,8 +2,7 @@
 
 Date: 2026-02-22
 Project: `mobile/` (Expo React Native)
-Scope: Visual + aural + singing recording (`note_naming`, `interval_visual`, `rhythm_id`, `interval_aural`, `sing_note`, `sing_interval`)
-Deferred: Singing melody recording (`sing_melody`)
+Scope: Visual + aural + singing recording (`note_naming`, `interval_visual`, `rhythm_id`, `interval_aural`, `sing_note`, `sing_interval`, `sing_melody`)
 
 ## Automated Preflight (Executed)
 

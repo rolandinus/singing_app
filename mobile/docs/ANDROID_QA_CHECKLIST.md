@@ -2,8 +2,7 @@
 
 ## Scope
 - Build target: Expo React Native app in `mobile/`
-- Feature scope: visual + aural + singing recording (`note_naming`, `interval_visual`, `rhythm_id`, `interval_aural`, `sing_note`, `sing_interval`)
-- Deferred scope: singing melody recording (`sing_melody`)
+- Feature scope: visual + aural + singing recording (`note_naming`, `interval_visual`, `rhythm_id`, `interval_aural`, `sing_note`, `sing_interval`, `sing_melody`)
 - Data scope: fresh mobile profile, local persistence via AsyncStorage
 
 ## Test Environment
@@ -37,7 +36,7 @@
 - Ending session navigates to summary with correct totals and accuracy.
 
 ## Custom Session Flow
-- In Practice, select each visual/aural/singing skill (excluding `sing_melody`) and both clefs.
+- In Practice, select each visual/aural/singing skill and both clefs.
 - Level and count inputs accept valid numbers and clamp out-of-range values.
 - Start custom session produces chosen skill/clef exercises.
 - Ending custom session writes to recent sessions.
