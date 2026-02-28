@@ -52,3 +52,9 @@ Optional custom port:
 
 - Progress is stored locally in the browser.
 - `singV2.html` is preserved as reference and is not the primary app shell.
+
+## Android Automation
+
+Headless Android emulator + Maestro smoke test setup is documented in:
+
+- `mobile/docs/ANDROID_AUTOMATION.md`
