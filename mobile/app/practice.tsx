@@ -2,14 +2,14 @@ import { router } from 'expo-router';
 import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { INTERVAL_LABELS, SKILL_DEFINITIONS } from '../src/core/config/curriculum';
-import { clefLabel, modeLabel, skillLabel, t } from '../src/core/i18n/translator';
-import type { Exercise, SkillKey } from '../src/core/types';
+import { clefLabel, modeLabel, skillLabel, t, type TranslationKey } from '../src/core/i18n/translator';
+import type { Exercise, ExerciseFamily, SkillKey } from '../src/core/types';
 import { useAppStore } from '../src/state/use-app-store';
 import { Card } from '../src/ui/components/Card';
 import { Screen } from '../src/ui/components/Screen';
 import { StaffSvg } from '../src/ui/components/StaffSvg';
 
-const visualSkills = SKILL_DEFINITIONS.filter((s) => s.family === 'visual');
+const CUSTOM_FAMILIES: ExerciseFamily[] = ['visual', 'aural'];
 
 function promptToNotes(exercise: Exercise | null): string[] {
   if (!exercise) return [];
@@ -20,10 +20,12 @@ function promptToNotes(exercise: Exercise | null): string[] {
 
 export default function PracticeScreen() {
   const settings = useAppStore((s) => s.settings);
+  const selectedFamily = useAppStore((s) => s.selectedFamily);
   const selectedSkill = useAppStore((s) => s.selectedSkill);
   const selectedClef = useAppStore((s) => s.selectedClef);
   const selectedLevel = useAppStore((s) => s.selectedLevel);
   const selectedCount = useAppStore((s) => s.selectedCount);
+  const setSelectedFamily = useAppStore((s) => s.setSelectedFamily);
   const setSelectedSkill = useAppStore((s) => s.setSelectedSkill);
   const setSelectedClef = useAppStore((s) => s.setSelectedClef);
   const setSelectedLevel = useAppStore((s) => s.setSelectedLevel);
@@ -35,11 +37,13 @@ export default function PracticeScreen() {
   const feedback = useAppStore((s) => s.feedback);
   const answerState = useAppStore((s) => s.answerState);
   const submitChoice = useAppStore((s) => s.submitChoice);
+  const playPrompt = useAppStore((s) => s.playPrompt);
   const nextExercise = useAppStore((s) => s.nextExercise);
   const endSession = useAppStore((s) => s.endSession);
   const summary = useAppStore((s) => s.summary);
 
   const locale = settings.locale;
+  const familySkills = SKILL_DEFINITIONS.filter((s) => s.family === selectedFamily);
 
   useEffect(() => {
     if (summary) {
@@ -49,15 +53,31 @@ export default function PracticeScreen() {
 
   const progressPercent = sessionMeta.total > 0 ? Math.round((sessionMeta.index / sessionMeta.total) * 100) : 0;
   const canGoNext = Boolean(feedback.text);
+  const subPrompt = currentExercise ? buildSubPrompt(currentExercise, locale) : '';
 
   return (
     <Screen>
       <Card>
         <Text style={styles.sectionTitle}>{t(locale, 'custom_session')}</Text>
 
+        <Text style={styles.label}>{t(locale, 'family')}</Text>
+        <View style={styles.chipsRow}>
+          {CUSTOM_FAMILIES.map((family) => (
+            <Pressable
+              key={family}
+              style={[styles.chip, selectedFamily === family && styles.chipActive]}
+              onPress={() => setSelectedFamily(family)}
+            >
+              <Text style={[styles.chipText, selectedFamily === family && styles.chipTextActive]}>
+                {t(locale, `family_${family}` as TranslationKey)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
         <Text style={styles.label}>{t(locale, 'skill')}</Text>
         <View style={styles.chipsRow}>
-          {visualSkills.map((skill) => (
+          {familySkills.map((skill) => (
             <Pressable
               key={skill.key}
               style={[styles.chip, selectedSkill === skill.key && styles.chipActive]}
@@ -107,12 +127,19 @@ export default function PracticeScreen() {
         {currentExercise ? (
           <>
             <Text style={styles.prompt}>{buildPrompt(currentExercise, locale)}</Text>
+            {subPrompt ? <Text style={styles.subPrompt}>{subPrompt}</Text> : null}
 
             {currentExercise.skillKey !== 'rhythm_id' ? (
               <StaffSvg clef={currentExercise.clef} notes={promptToNotes(currentExercise)} />
             ) : (
               <Text style={styles.rhythm}>{String(currentExercise.prompt.display)}</Text>
             )}
+
+            {currentExercise.skillKey === 'interval_aural' ? (
+              <Pressable style={styles.promptButton} onPress={() => void playPrompt()}>
+                <Text style={styles.promptButtonText}>{t(locale, 'play_prompt')}</Text>
+              </Pressable>
+            ) : null}
 
             <View style={styles.choicesRow}>
               {currentExercise.choices.map((choice) => {
@@ -168,11 +195,18 @@ function buildPrompt(exercise: Exercise, locale: 'de' | 'en'): string {
   if (exercise.skillKey === 'note_naming') return t(locale, 'which_note', { clef: clefLabel(locale, exercise.clef) });
   if (exercise.skillKey === 'interval_visual') return t(locale, 'which_interval', { clef: clefLabel(locale, exercise.clef) });
   if (exercise.skillKey === 'rhythm_id') return t(locale, 'which_rhythm');
+  if (exercise.skillKey === 'interval_aural') return t(locale, 'identify_heard_interval');
   return t(locale, 'exercise_unknown');
 }
 
+function buildSubPrompt(exercise: Exercise, locale: 'de' | 'en'): string {
+  if (exercise.skillKey === 'interval_visual') return t(locale, 'interval_visual_hint');
+  if (exercise.skillKey === 'interval_aural') return t(locale, 'interval_aural_hint');
+  return '';
+}
+
 function labelForChoice(skillKey: string, choice: string, metadata: Record<string, unknown>): string {
-  if (skillKey === 'interval_visual') {
+  if (skillKey === 'interval_visual' || skillKey === 'interval_aural') {
     const n = Number(choice);
     return `${choice} - ${INTERVAL_LABELS[n] ?? choice}`;
   }
@@ -198,7 +232,10 @@ const styles = StyleSheet.create({
   progressTrack: { height: 8, borderRadius: 99, backgroundColor: '#e2e8f0', overflow: 'hidden' },
   progressFill: { height: 8, backgroundColor: '#10b981' },
   prompt: { fontSize: 16, fontWeight: '600', color: '#0f172a' },
+  subPrompt: { fontSize: 13, color: '#475569' },
   rhythm: { fontSize: 28, textAlign: 'center', color: '#334155', marginVertical: 10 },
+  promptButton: { alignSelf: 'flex-start', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fff' },
+  promptButtonText: { color: '#334155', fontWeight: '600' },
   choicesRow: { gap: 8 },
   choice: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 10, backgroundColor: '#f8fafc' },
   choiceSelected: { borderColor: '#60a5fa' },

@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { DEFAULT_SETTINGS, SKILL_DEFINITIONS } from '../core/config/curriculum';
 import { SessionService } from '../core/services/session-service';
-import type { AppSettings, Clef, Exercise, SessionSummary, SkillKey } from '../core/types';
+import type { AppSettings, Clef, Exercise, ExerciseFamily, SessionSummary, SkillKey } from '../core/types';
 import { AsyncStoragePort } from '../adapters/storage/async-storage-port';
+import { ExpoAudioPromptPort } from '../adapters/audio/expo-audio-prompt-port';
 
-const service = new SessionService(new AsyncStoragePort());
+const service = new SessionService(new AsyncStoragePort(), new ExpoAudioPromptPort());
 
 type StoreState = {
   bootstrapped: boolean;
@@ -16,6 +17,7 @@ type StoreState = {
   feedback: { text: string; isCorrect: boolean };
   answerState: { selectedChoice: string | null; expectedChoice: string | null };
   summary: SessionSummary | null;
+  selectedFamily: ExerciseFamily;
   selectedSkill: SkillKey;
   selectedClef: Clef;
   selectedLevel: number;
@@ -25,9 +27,11 @@ type StoreState = {
   startGuided: () => void;
   startCustom: () => void;
   submitChoice: (choice: string) => Promise<void>;
+  playPrompt: () => Promise<void>;
   nextExercise: () => Promise<void>;
   endSession: () => Promise<void>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<void>;
+  setSelectedFamily: (value: ExerciseFamily) => void;
   setSelectedSkill: (value: SkillKey) => void;
   setSelectedClef: (value: Clef) => void;
   setSelectedLevel: (value: number) => void;
@@ -35,8 +39,8 @@ type StoreState = {
   clearSummary: () => void;
 };
 
-function firstVisualSkill(): SkillKey {
-  return (SKILL_DEFINITIONS.find((s) => s.family === 'visual')?.key ?? 'note_naming') as SkillKey;
+function firstSkillForFamily(family: ExerciseFamily): SkillKey {
+  return (SKILL_DEFINITIONS.find((s) => s.family === family)?.key ?? 'note_naming') as SkillKey;
 }
 
 export const useAppStore = create<StoreState>((set, get) => ({
@@ -49,7 +53,8 @@ export const useAppStore = create<StoreState>((set, get) => ({
   feedback: { text: '', isCorrect: false },
   answerState: { selectedChoice: null, expectedChoice: null },
   summary: null,
-  selectedSkill: firstVisualSkill(),
+  selectedFamily: 'visual',
+  selectedSkill: firstSkillForFamily('visual'),
   selectedClef: 'treble',
   selectedLevel: 1,
   selectedCount: 10,
@@ -128,6 +133,10 @@ export const useAppStore = create<StoreState>((set, get) => ({
     get().refreshDashboard();
   },
 
+  async playPrompt() {
+    await service.playPrompt();
+  },
+
   async nextExercise() {
     const result = await service.nextExercise();
     if (!result.ok) return;
@@ -170,6 +179,12 @@ export const useAppStore = create<StoreState>((set, get) => ({
     get().refreshDashboard();
   },
 
+  setSelectedFamily(value) {
+    set({
+      selectedFamily: value,
+      selectedSkill: firstSkillForFamily(value),
+    });
+  },
   setSelectedSkill(value) { set({ selectedSkill: value }); },
   setSelectedClef(value) { set({ selectedClef: value }); },
   setSelectedLevel(value) { set({ selectedLevel: Math.max(1, Math.min(5, value)) }); },

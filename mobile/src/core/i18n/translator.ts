@@ -14,10 +14,15 @@ const TRANSLATIONS = {
     recent_sessions: 'Letzte Sessions',
     no_sessions: 'Noch keine Sessions.',
     skill_map_visual: 'Skill-Map (visuell)',
+    skill_map_training: 'Skill-Map (Training)',
     custom_practice: 'Custom Practice',
     settings: 'Einstellungen',
     attempts: 'Versuche',
     custom_session: 'Custom Session',
+    family: 'Bereich',
+    family_visual: 'Visuell',
+    family_aural: 'Gehör',
+    family_singing: 'Singen',
     skill: 'Skill',
     clef: 'Schlüssel',
     level: 'Level',
@@ -34,6 +39,10 @@ const TRANSLATIONS = {
     which_note: 'Welche Note ist das? ({clef})',
     which_interval: 'Welches Intervall siehst du? ({clef})',
     which_rhythm: 'Welches Rhythmusmuster ist dargestellt?',
+    identify_heard_interval: 'Höre das Intervall und identifiziere es.',
+    interval_visual_hint: 'Bestimme den Abstand zwischen den beiden Noten.',
+    interval_aural_hint: 'Tippe auf Prompt abspielen, dann wähle das Intervall.',
+    play_prompt: 'Prompt abspielen',
     exercise_unknown: 'Übung',
     session_finished: 'Session abgeschlossen',
     mode: 'Modus',
@@ -72,10 +81,15 @@ const TRANSLATIONS = {
     recent_sessions: 'Recent Sessions',
     no_sessions: 'No sessions yet.',
     skill_map_visual: 'Skill Map (visual)',
+    skill_map_training: 'Skill Map (training)',
     custom_practice: 'Custom Practice',
     settings: 'Settings',
     attempts: 'attempts',
     custom_session: 'Custom Session',
+    family: 'Family',
+    family_visual: 'Visual',
+    family_aural: 'Aural',
+    family_singing: 'Singing',
     skill: 'Skill',
     clef: 'Clef',
     level: 'Level',
@@ -92,6 +106,10 @@ const TRANSLATIONS = {
     which_note: 'Which note is this? ({clef})',
     which_interval: 'Which interval do you see? ({clef})',
     which_rhythm: 'Which rhythm pattern is shown?',
+    identify_heard_interval: 'Listen to the interval and identify it.',
+    interval_visual_hint: 'Determine the distance between the two notes.',
+    interval_aural_hint: 'Tap Play prompt, then choose the interval.',
+    play_prompt: 'Play prompt',
     exercise_unknown: 'Exercise',
     session_finished: 'Session completed',
     mode: 'Mode',
@@ -119,7 +137,7 @@ const TRANSLATIONS = {
   },
 } as const;
 
-type TranslationKey = keyof typeof TRANSLATIONS.de;
+export type TranslationKey = keyof typeof TRANSLATIONS.de;
 
 type TranslationParams = Record<string, string | number>;
 

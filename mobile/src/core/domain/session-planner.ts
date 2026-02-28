@@ -1,12 +1,17 @@
 import { SESSION_DISTRIBUTION, SKILL_DEFINITIONS } from '../config/curriculum';
-import type { Clef, SkillKey } from '../types';
+import type { Clef, ExerciseFamily, SkillKey } from '../types';
 
-function buildSkillEntries(enabledClefs: Clef[], progressBySkill: Map<string, any>, visualOnly = false) {
+function buildSkillEntries(
+  enabledClefs: Clef[],
+  progressBySkill: Map<string, any>,
+  includeFamilies: ExerciseFamily[] | null = null,
+) {
   const entries: Array<{ clef: Clef; skillKey: SkillKey; mastery: number; level: number }> = [];
+  const familySet = includeFamilies ? new Set(includeFamilies) : null;
 
   enabledClefs.forEach((clef) => {
     SKILL_DEFINITIONS.forEach((skill) => {
-      if (visualOnly && skill.family !== 'visual') {
+      if (familySet && !familySet.has(skill.family)) {
         return;
       }
 
@@ -31,15 +36,15 @@ export class SessionPlanner {
     progressBySkill,
     exerciseCount,
     generator,
-    visualOnly = false,
+    includeFamilies = null,
   }: {
     enabledClefs: Clef[];
     progressBySkill: Map<string, any>;
     exerciseCount: number;
     generator: any;
-    visualOnly?: boolean;
+    includeFamilies?: ExerciseFamily[] | null;
   }) {
-    const entries = buildSkillEntries(enabledClefs, progressBySkill, visualOnly).sort((a, b) => {
+    const entries = buildSkillEntries(enabledClefs, progressBySkill, includeFamilies).sort((a, b) => {
       if (a.mastery !== b.mastery) return a.mastery - b.mastery;
       return a.level - b.level;
     });

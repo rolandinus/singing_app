@@ -3,7 +3,16 @@ import { ExerciseEvaluator } from '../domain/exercise-evaluator';
 import { ExerciseGenerator } from '../domain/exercise-generator';
 import { createDefaultProgressRecord, ProgressionEngine } from '../domain/progression-engine';
 import { SessionPlanner } from '../domain/session-planner';
-import type { AppSettings, Clef, EvaluationResult, Exercise, ProgressRecord, SessionRecord, SessionSummary, SkillKey } from '../types';
+import type {
+  AppSettings,
+  Clef,
+  EvaluationResult,
+  Exercise,
+  ProgressRecord,
+  SessionRecord,
+  SessionSummary,
+  SkillKey,
+} from '../types';
 
 function createSessionId(): string {
   return `session-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
@@ -30,6 +39,11 @@ export class SessionService {
   private progression = new ProgressionEngine();
   private planner = new SessionPlanner();
 
+  private audioPromptPort: {
+    playInterval: (first: string, second: string) => Promise<void>;
+    stop: () => Promise<void>;
+  };
+
   constructor(private storage: {
     init: () => Promise<void>;
     loadSettings: () => Promise<AppSettings>;
@@ -38,7 +52,15 @@ export class SessionService {
     saveProgress: (record: ProgressRecord) => Promise<ProgressRecord>;
     saveSession: (session: SessionRecord) => Promise<SessionRecord>;
     getRecentSessions: (limit?: number) => Promise<SessionRecord[]>;
-  }) {}
+  }, audioPromptPort?: {
+    playInterval: (first: string, second: string) => Promise<void>;
+    stop: () => Promise<void>;
+  }) {
+    this.audioPromptPort = audioPromptPort ?? {
+      async playInterval() {},
+      async stop() {},
+    };
+  }
 
   async init(): Promise<void> {
     await this.storage.init();
@@ -63,7 +85,7 @@ export class SessionService {
   buildSkillRows() {
     const rows: Array<{ clef: Clef; skillKey: SkillKey; level: number; mastery: number; attemptsTotal: number }> = [];
     this.settings.enabledClefs.forEach((clef) => {
-      SKILL_DEFINITIONS.filter((s) => s.family === 'visual').forEach((skill) => {
+      SKILL_DEFINITIONS.filter((s) => s.family !== 'singing').forEach((skill) => {
         const key = `${clef}.${skill.key}`;
         const record = this.progressBySkill.get(key) ?? createDefaultProgressRecord(key);
         rows.push({ clef, skillKey: skill.key, level: record.level, mastery: record.mastery, attemptsTotal: record.attemptsTotal });
@@ -88,12 +110,17 @@ export class SessionService {
       progressBySkill: this.progressBySkill,
       exerciseCount: this.settings.dailyGoalExercises,
       generator: this.generator,
-      visualOnly: true,
+      includeFamilies: ['visual', 'aural'],
     }) as Exercise[];
     return this.startSession('guided', queue);
   }
 
   startCustomSession(input: { skillKey: SkillKey; clef: Clef; level: number; count: number }) {
+    const skill = SKILL_DEFINITIONS.find((entry) => entry.key === input.skillKey);
+    if (skill?.family === 'singing') {
+      return { ok: false as const, error: 'Singen kommt im nächsten Schritt. Bitte visual oder aural wählen.' };
+    }
+
     const queue = this.planner.generateCustomSession({ ...input, generator: this.generator }) as Exercise[];
     return this.startSession('custom', queue);
   }
@@ -120,6 +147,15 @@ export class SessionService {
 
     const evaluation = this.evaluator.evaluate(exercise, { answer: String(choice) });
     return this.applyEvaluation(exercise, evaluation, null, String(choice));
+  }
+
+  async playPrompt() {
+    const exercise = this.getCurrentExercise();
+    if (!exercise) return;
+
+    if (exercise.skillKey === 'interval_aural') {
+      await this.audioPromptPort.playInterval(String(exercise.prompt.first), String(exercise.prompt.second));
+    }
   }
 
   async nextExercise() {
@@ -165,6 +201,7 @@ export class SessionService {
 
     this.activeSession = null;
     this.currentEvaluation = null;
+    await this.audioPromptPort.stop();
 
     return { summary, sessionRecord };
   }

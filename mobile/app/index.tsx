@@ -50,7 +50,7 @@ export default function DashboardScreen() {
       </Card>
 
       <Card>
-        <Text style={styles.sectionTitle}>{t(locale, 'skill_map_visual')}</Text>
+        <Text style={styles.sectionTitle}>{t(locale, 'skill_map_training')}</Text>
         {skillRows.map((row) => (
           <View key={`${row.clef}.${row.skillKey}`} style={styles.skillRow}>
             <View style={styles.skillRowHead}>
