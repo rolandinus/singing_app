@@ -4,7 +4,7 @@ import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
 export function Screen({ children }: { children: React.ReactNode }) {
   return (
     <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <View style={styles.inner}>{children}</View>
       </ScrollView>
     </SafeAreaView>

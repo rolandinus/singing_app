@@ -25,7 +25,32 @@ type ActiveSession = {
   index: number;
   results: SessionRecord['exercises'];
   startedAt: string;
+  startProgressBySkill: Record<string, { mastery: number; level: number }>;
 };
+
+function toLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function computeSessionStreakDays(sessions: SessionRecord[]): number {
+  const completedDays = new Set(
+    sessions.map((session) => toLocalDateKey(new Date(session.completedAt))),
+  );
+
+  let streak = 0;
+  const cursor = new Date();
+  cursor.setHours(0, 0, 0, 0);
+
+  while (completedDays.has(toLocalDateKey(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return streak;
+}
 
 export class SessionService {
   private settings: AppSettings = { ...DEFAULT_SETTINGS };
@@ -146,6 +171,14 @@ export class SessionService {
   private startSession(mode: 'guided' | 'custom', queue: Exercise[]) {
     if (!queue.length) return { ok: false as const, error: 'Keine Übungen für diese Auswahl generiert.' };
 
+    const startProgressBySkill: Record<string, { mastery: number; level: number }> = {};
+    queue.forEach((exercise) => {
+      const key = `${exercise.clef}.${exercise.skillKey}`;
+      if (startProgressBySkill[key]) return;
+      const record = this.progressBySkill.get(key) ?? createDefaultProgressRecord(key);
+      startProgressBySkill[key] = { mastery: record.mastery, level: record.level };
+    });
+
     this.activeSession = {
       sessionId: createSessionId(),
       mode,
@@ -153,6 +186,7 @@ export class SessionService {
       index: 0,
       results: [],
       startedAt: new Date().toISOString(),
+      startProgressBySkill,
     };
     this.currentEvaluation = null;
 
@@ -250,8 +284,9 @@ export class SessionService {
     const total = this.activeSession.results.length;
     const correct = this.activeSession.results.filter((r) => r.correct).length;
     const accuracy = total > 0 ? correct / total : 0;
+    const practicedSkills = this.buildSessionSkillDeltas(this.activeSession);
 
-    const summary: SessionSummary = { mode: this.activeSession.mode, total, correct, accuracy };
+    const summary: SessionSummary = { mode: this.activeSession.mode, total, correct, accuracy, practicedSkills };
     const completedAt = new Date().toISOString();
 
     const sessionRecord: SessionRecord = {
@@ -262,6 +297,9 @@ export class SessionService {
       exercises: this.activeSession.results,
       summary,
     };
+
+    const streakDays = computeSessionStreakDays([sessionRecord, ...this.recentSessions]);
+    summary.streakDays = streakDays;
 
     await this.storage.saveSession(sessionRecord);
     this.recentSessions = await this.storage.getRecentSessions(20);
@@ -317,5 +355,31 @@ export class SessionService {
       selectedChoice,
       expectedChoice: (exercise.expectedAnswer as any)?.answer != null ? String((exercise.expectedAnswer as any).answer) : null,
     };
+  }
+
+  private buildSessionSkillDeltas(activeSession: ActiveSession): NonNullable<SessionSummary['practicedSkills']> {
+    const practicedKeys = new Set(
+      activeSession.results.map((result) => `${result.clef}.${result.skillKey}`),
+    );
+
+    return Array.from(practicedKeys)
+      .map((progressKey) => {
+        const after = this.progressBySkill.get(progressKey) ?? createDefaultProgressRecord(progressKey);
+        const before = activeSession.startProgressBySkill[progressKey] ?? { mastery: 0, level: 1 };
+        const [clefPart, skillPart] = progressKey.split('.');
+        if (!clefPart || !skillPart) return null;
+
+        return {
+          clef: clefPart as Clef,
+          skillKey: skillPart as SkillKey,
+          masteryBefore: before.mastery,
+          masteryAfter: after.mastery,
+          masteryDelta: after.mastery - before.mastery,
+          levelBefore: before.level,
+          levelAfter: after.level,
+        };
+      })
+      .filter((row): row is NonNullable<SessionSummary['practicedSkills']>[number] => Boolean(row))
+      .sort((a, b) => Math.abs(b.masteryDelta) - Math.abs(a.masteryDelta));
   }
 }

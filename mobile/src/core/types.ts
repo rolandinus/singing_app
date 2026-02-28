@@ -46,6 +46,16 @@ export type SessionSummary = {
   total: number;
   correct: number;
   accuracy: number;
+  practicedSkills?: Array<{
+    clef: Clef;
+    skillKey: SkillKey;
+    masteryBefore: number;
+    masteryAfter: number;
+    masteryDelta: number;
+    levelBefore: number;
+    levelAfter: number;
+  }>;
+  streakDays?: number;
 };
 
 export type SessionRecord = {

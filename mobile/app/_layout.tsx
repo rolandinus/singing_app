@@ -13,10 +13,8 @@ export default function RootLayout() {
 
   return (
     <Stack>
-      <Stack.Screen name="index" options={{ title: t(locale, 'nav_dashboard') }} />
-      <Stack.Screen name="practice" options={{ title: t(locale, 'nav_practice') }} />
-      <Stack.Screen name="settings" options={{ title: t(locale, 'nav_settings') }} />
-      <Stack.Screen name="summary" options={{ title: t(locale, 'nav_summary') }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="summary" options={{ title: t(locale, 'nav_summary'), presentation: 'modal' }} />
     </Stack>
   );
 }
