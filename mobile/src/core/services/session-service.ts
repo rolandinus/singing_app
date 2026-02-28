@@ -40,7 +40,13 @@ export class SessionService {
   private planner = new SessionPlanner();
 
   private audioPromptPort: {
+    playNote: (note: string) => Promise<void>;
+    playReferenceWithTarget: (reference: string, target: string) => Promise<void>;
     playInterval: (first: string, second: string) => Promise<void>;
+    stop: () => Promise<void>;
+  };
+  private pitchCapturePort: {
+    capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
     stop: () => Promise<void>;
   };
 
@@ -53,11 +59,22 @@ export class SessionService {
     saveSession: (session: SessionRecord) => Promise<SessionRecord>;
     getRecentSessions: (limit?: number) => Promise<SessionRecord[]>;
   }, audioPromptPort?: {
+    playNote: (note: string) => Promise<void>;
+    playReferenceWithTarget: (reference: string, target: string) => Promise<void>;
     playInterval: (first: string, second: string) => Promise<void>;
+    stop: () => Promise<void>;
+  }, pitchCapturePort?: {
+    capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
     stop: () => Promise<void>;
   }) {
     this.audioPromptPort = audioPromptPort ?? {
+      async playNote() {},
+      async playReferenceWithTarget() {},
       async playInterval() {},
+      async stop() {},
+    };
+    this.pitchCapturePort = pitchCapturePort ?? {
+      async capturePitchSample() { return null; },
       async stop() {},
     };
   }
@@ -85,7 +102,7 @@ export class SessionService {
   buildSkillRows() {
     const rows: Array<{ clef: Clef; skillKey: SkillKey; level: number; mastery: number; attemptsTotal: number }> = [];
     this.settings.enabledClefs.forEach((clef) => {
-      SKILL_DEFINITIONS.filter((s) => s.family !== 'singing').forEach((skill) => {
+      SKILL_DEFINITIONS.filter((s) => s.key !== 'sing_melody').forEach((skill) => {
         const key = `${clef}.${skill.key}`;
         const record = this.progressBySkill.get(key) ?? createDefaultProgressRecord(key);
         rows.push({ clef, skillKey: skill.key, level: record.level, mastery: record.mastery, attemptsTotal: record.attemptsTotal });
@@ -110,15 +127,16 @@ export class SessionService {
       progressBySkill: this.progressBySkill,
       exerciseCount: this.settings.dailyGoalExercises,
       generator: this.generator,
-      includeFamilies: ['visual', 'aural'],
+      includeFamilies: ['visual', 'aural', 'singing'],
+      excludeSkillKeys: ['sing_melody'],
     }) as Exercise[];
     return this.startSession('guided', queue);
   }
 
   startCustomSession(input: { skillKey: SkillKey; clef: Clef; level: number; count: number }) {
     const skill = SKILL_DEFINITIONS.find((entry) => entry.key === input.skillKey);
-    if (skill?.family === 'singing') {
-      return { ok: false as const, error: 'Singen kommt im nächsten Schritt. Bitte visual oder aural wählen.' };
+    if (skill?.key === 'sing_melody') {
+      return { ok: false as const, error: 'Melodieaufnahme folgt später. Nutze aktuell Ton oder Intervall singen.' };
     }
 
     const queue = this.planner.generateCustomSession({ ...input, generator: this.generator }) as Exercise[];
@@ -155,7 +173,31 @@ export class SessionService {
 
     if (exercise.skillKey === 'interval_aural') {
       await this.audioPromptPort.playInterval(String(exercise.prompt.first), String(exercise.prompt.second));
+      return;
     }
+
+    if (exercise.skillKey === 'sing_note') {
+      await this.audioPromptPort.playNote(String(exercise.prompt.target));
+      return;
+    }
+
+    if (exercise.skillKey === 'sing_interval') {
+      await this.audioPromptPort.playReferenceWithTarget(String(exercise.prompt.reference), String(exercise.prompt.target));
+    }
+  }
+
+  async captureSingingAttempt() {
+    const exercise = this.getCurrentExercise();
+    if (!exercise || exercise.family !== 'singing' || this.currentEvaluation) return null;
+
+    const captured = await this.pitchCapturePort.capturePitchSample(2200);
+    const evaluation = this.evaluator.evaluate(
+      exercise,
+      captured,
+      { toleranceCents: this.toleranceForLevel(exercise.level) },
+    );
+
+    return this.applyEvaluation(exercise, evaluation, captured);
   }
 
   async nextExercise() {
@@ -163,7 +205,11 @@ export class SessionService {
 
     const exercise = this.getCurrentExercise();
     if (exercise && !this.currentEvaluation) {
-      const evaluation = this.evaluator.evaluate(exercise, { answer: '__skip__' });
+      const evaluation = this.evaluator.evaluate(
+        exercise,
+        exercise.family === 'singing' ? null : { answer: '__skip__' },
+        { toleranceCents: this.toleranceForLevel(exercise.level) },
+      );
       await this.applyEvaluation(exercise, evaluation);
     }
 
@@ -202,6 +248,7 @@ export class SessionService {
     this.activeSession = null;
     this.currentEvaluation = null;
     await this.audioPromptPort.stop();
+    await this.pitchCapturePort.stop();
 
     return { summary, sessionRecord };
   }

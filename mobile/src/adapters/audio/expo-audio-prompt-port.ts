@@ -152,6 +152,20 @@ export class ExpoAudioPromptPort {
     await this.playTone(second);
   }
 
+  async playNote(note: string): Promise<void> {
+    await this.stop();
+    await this.ensureAudioMode();
+    await this.playTone(note);
+  }
+
+  async playReferenceWithTarget(reference: string, target: string): Promise<void> {
+    await this.stop();
+    await this.ensureAudioMode();
+    await this.playTone(reference);
+    await new Promise((resolve) => setTimeout(resolve, 220));
+    await this.playTone(target);
+  }
+
   async stop(): Promise<void> {
     if (!this.activeSound) {
       return;

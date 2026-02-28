@@ -9,12 +9,14 @@ import { Card } from '../src/ui/components/Card';
 import { Screen } from '../src/ui/components/Screen';
 import { StaffSvg } from '../src/ui/components/StaffSvg';
 
-const CUSTOM_FAMILIES: ExerciseFamily[] = ['visual', 'aural'];
+const CUSTOM_FAMILIES: ExerciseFamily[] = ['visual', 'aural', 'singing'];
 
 function promptToNotes(exercise: Exercise | null): string[] {
   if (!exercise) return [];
   if (exercise.skillKey === 'note_naming') return [String(exercise.prompt.note)];
   if (exercise.skillKey === 'interval_visual') return [String(exercise.prompt.first), String(exercise.prompt.second)];
+  if (exercise.skillKey === 'sing_note') return [String(exercise.prompt.target)];
+  if (exercise.skillKey === 'sing_interval') return [String(exercise.prompt.reference), String(exercise.prompt.target)];
   return [];
 }
 
@@ -38,12 +40,13 @@ export default function PracticeScreen() {
   const answerState = useAppStore((s) => s.answerState);
   const submitChoice = useAppStore((s) => s.submitChoice);
   const playPrompt = useAppStore((s) => s.playPrompt);
+  const captureSingingAttempt = useAppStore((s) => s.captureSingingAttempt);
   const nextExercise = useAppStore((s) => s.nextExercise);
   const endSession = useAppStore((s) => s.endSession);
   const summary = useAppStore((s) => s.summary);
 
   const locale = settings.locale;
-  const familySkills = SKILL_DEFINITIONS.filter((s) => s.family === selectedFamily);
+  const familySkills = SKILL_DEFINITIONS.filter((s) => s.family === selectedFamily && s.key !== 'sing_melody');
 
   useEffect(() => {
     if (summary) {
@@ -135,9 +138,17 @@ export default function PracticeScreen() {
               <Text style={styles.rhythm}>{String(currentExercise.prompt.display)}</Text>
             )}
 
-            {currentExercise.skillKey === 'interval_aural' ? (
+            {(currentExercise.skillKey === 'interval_aural'
+              || currentExercise.skillKey === 'sing_note'
+              || currentExercise.skillKey === 'sing_interval') ? (
               <Pressable style={styles.promptButton} onPress={() => void playPrompt()}>
                 <Text style={styles.promptButtonText}>{t(locale, 'play_prompt')}</Text>
+              </Pressable>
+            ) : null}
+
+            {(currentExercise.skillKey === 'sing_note' || currentExercise.skillKey === 'sing_interval') ? (
+              <Pressable style={styles.captureButton} onPress={() => void captureSingingAttempt()}>
+                <Text style={styles.captureButtonText}>{t(locale, 'record_and_evaluate')}</Text>
               </Pressable>
             ) : null}
 
@@ -196,12 +207,16 @@ function buildPrompt(exercise: Exercise, locale: 'de' | 'en'): string {
   if (exercise.skillKey === 'interval_visual') return t(locale, 'which_interval', { clef: clefLabel(locale, exercise.clef) });
   if (exercise.skillKey === 'rhythm_id') return t(locale, 'which_rhythm');
   if (exercise.skillKey === 'interval_aural') return t(locale, 'identify_heard_interval');
+  if (exercise.skillKey === 'sing_note') return t(locale, 'sing_note_prompt', { clef: clefLabel(locale, exercise.clef) });
+  if (exercise.skillKey === 'sing_interval') return t(locale, 'sing_interval_prompt', { clef: clefLabel(locale, exercise.clef) });
   return t(locale, 'exercise_unknown');
 }
 
 function buildSubPrompt(exercise: Exercise, locale: 'de' | 'en'): string {
   if (exercise.skillKey === 'interval_visual') return t(locale, 'interval_visual_hint');
   if (exercise.skillKey === 'interval_aural') return t(locale, 'interval_aural_hint');
+  if (exercise.skillKey === 'sing_note') return t(locale, 'sing_note_hint');
+  if (exercise.skillKey === 'sing_interval') return t(locale, 'sing_interval_hint');
   return '';
 }
 
@@ -236,6 +251,8 @@ const styles = StyleSheet.create({
   rhythm: { fontSize: 28, textAlign: 'center', color: '#334155', marginVertical: 10 },
   promptButton: { alignSelf: 'flex-start', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#fff' },
   promptButtonText: { color: '#334155', fontWeight: '600' },
+  captureButton: { alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#f59e0b' },
+  captureButtonText: { color: '#fff', fontWeight: '700' },
   choicesRow: { gap: 8 },
   choice: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 10, backgroundColor: '#f8fafc' },
   choiceSelected: { borderColor: '#60a5fa' },

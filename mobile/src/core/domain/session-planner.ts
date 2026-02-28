@@ -5,13 +5,18 @@ function buildSkillEntries(
   enabledClefs: Clef[],
   progressBySkill: Map<string, any>,
   includeFamilies: ExerciseFamily[] | null = null,
+  excludeSkillKeys: SkillKey[] = [],
 ) {
   const entries: Array<{ clef: Clef; skillKey: SkillKey; mastery: number; level: number }> = [];
   const familySet = includeFamilies ? new Set(includeFamilies) : null;
+  const excludedSkillSet = new Set(excludeSkillKeys);
 
   enabledClefs.forEach((clef) => {
     SKILL_DEFINITIONS.forEach((skill) => {
       if (familySet && !familySet.has(skill.family)) {
+        return;
+      }
+      if (excludedSkillSet.has(skill.key)) {
         return;
       }
 
@@ -37,14 +42,16 @@ export class SessionPlanner {
     exerciseCount,
     generator,
     includeFamilies = null,
+    excludeSkillKeys = [],
   }: {
     enabledClefs: Clef[];
     progressBySkill: Map<string, any>;
     exerciseCount: number;
     generator: any;
     includeFamilies?: ExerciseFamily[] | null;
+    excludeSkillKeys?: SkillKey[];
   }) {
-    const entries = buildSkillEntries(enabledClefs, progressBySkill, includeFamilies).sort((a, b) => {
+    const entries = buildSkillEntries(enabledClefs, progressBySkill, includeFamilies, excludeSkillKeys).sort((a, b) => {
       if (a.mastery !== b.mastery) return a.mastery - b.mastery;
       return a.level - b.level;
     });

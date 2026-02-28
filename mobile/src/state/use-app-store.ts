@@ -4,8 +4,9 @@ import { SessionService } from '../core/services/session-service';
 import type { AppSettings, Clef, Exercise, ExerciseFamily, SessionSummary, SkillKey } from '../core/types';
 import { AsyncStoragePort } from '../adapters/storage/async-storage-port';
 import { ExpoAudioPromptPort } from '../adapters/audio/expo-audio-prompt-port';
+import { ExpoPitchCapturePort } from '../adapters/pitch/expo-pitch-capture-port';
 
-const service = new SessionService(new AsyncStoragePort(), new ExpoAudioPromptPort());
+const service = new SessionService(new AsyncStoragePort(), new ExpoAudioPromptPort(), new ExpoPitchCapturePort());
 
 type StoreState = {
   bootstrapped: boolean;
@@ -28,6 +29,7 @@ type StoreState = {
   startCustom: () => void;
   submitChoice: (choice: string) => Promise<void>;
   playPrompt: () => Promise<void>;
+  captureSingingAttempt: () => Promise<void>;
   nextExercise: () => Promise<void>;
   endSession: () => Promise<void>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<void>;
@@ -135,6 +137,18 @@ export const useAppStore = create<StoreState>((set, get) => ({
 
   async playPrompt() {
     await service.playPrompt();
+  },
+
+  async captureSingingAttempt() {
+    const outcome = await service.captureSingingAttempt();
+    if (!outcome) return;
+
+    set({
+      feedback: { text: outcome.feedback, isCorrect: outcome.evaluation.correct },
+      answerState: { selectedChoice: null, expectedChoice: null },
+      sessionMeta: service.getSessionMeta(),
+    });
+    get().refreshDashboard();
   },
 
   async nextExercise() {
