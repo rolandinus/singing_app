@@ -31,6 +31,8 @@ async function waitForSoundCompletion(sound: Audio.Sound): Promise<void> {
   });
 }
 
+type PitchTimelinePoint = { timeMs: number; frequency: number };
+
 export class ExpoPitchCapturePort {
   private activeRecording: Audio.Recording | null = null;
   private analysisSound: Audio.Sound | null = null;
@@ -89,8 +91,80 @@ export class ExpoPitchCapturePort {
       return null;
     }
 
+    const analysis = await this.analyzeRecording(uri);
+    const frequencies = analysis.timeline.map((point) => point.frequency);
+
+    if (frequencies.length === 0) {
+      return null;
+    }
+
+    const detectedFrequency = median(frequencies);
+    const detectedMidi = noteFromPitch(detectedFrequency);
+    const noteName = midiToScientific(detectedMidi);
+
+    return { detectedFrequency, detectedMidi, noteName };
+  }
+
+  async capturePitchContour(durationMs: number, segmentMs: number): Promise<{ detectedMidis: number[]; detectedFrequencies: number[] } | null> {
+    await this.stop();
+    await this.ensurePermissions();
+    await this.configureAudioModeForRecording();
+
+    const recording = new Audio.Recording();
+    this.activeRecording = recording;
+
+    try {
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      await sleep(Math.max(1000, durationMs));
+      await recording.stopAndUnloadAsync();
+    } finally {
+      this.activeRecording = null;
+    }
+
+    const uri = recording.getURI();
+    if (!uri) {
+      return null;
+    }
+
+    const analysis = await this.analyzeRecording(uri);
+    if (analysis.timeline.length === 0) {
+      return null;
+    }
+
+    const safeSegmentMs = Math.max(250, segmentMs);
+    const totalDurationMs = Math.max(safeSegmentMs, analysis.durationMs);
+    const segmentCount = Math.max(1, Math.round(totalDurationMs / safeSegmentMs));
+    const detectedFrequencies: number[] = [];
+
+    for (let segment = 0; segment < segmentCount; segment += 1) {
+      const start = segment * safeSegmentMs;
+      const end = start + safeSegmentMs;
+      const inWindow = analysis.timeline
+        .filter((point) => point.timeMs >= start && point.timeMs < end)
+        .map((point) => point.frequency);
+
+      if (inWindow.length === 0) {
+        continue;
+      }
+
+      detectedFrequencies.push(median(inWindow));
+    }
+
+    if (detectedFrequencies.length === 0) {
+      return null;
+    }
+
+    return {
+      detectedFrequencies,
+      detectedMidis: detectedFrequencies.map((frequency) => noteFromPitch(frequency)),
+    };
+  }
+
+  private async analyzeRecording(uri: string): Promise<{ timeline: PitchTimelinePoint[]; durationMs: number }> {
     await this.configureAudioModeForPlayback();
-    const frequencies: number[] = [];
+    const timeline: PitchTimelinePoint[] = [];
+    let startedAt = 0;
 
     const sound = new Audio.Sound();
     this.analysisSound = sound;
@@ -109,7 +183,14 @@ export class ExpoPitchCapturePort {
         return;
       }
 
-      frequencies.push(frequency);
+      if (!startedAt) {
+        startedAt = Date.now();
+      }
+
+      timeline.push({
+        timeMs: Math.max(0, Date.now() - startedAt),
+        frequency,
+      });
     });
 
     try {
@@ -122,15 +203,8 @@ export class ExpoPitchCapturePort {
       this.analysisSound = null;
     }
 
-    if (frequencies.length === 0) {
-      return null;
-    }
-
-    const detectedFrequency = median(frequencies);
-    const detectedMidi = noteFromPitch(detectedFrequency);
-    const noteName = midiToScientific(detectedMidi);
-
-    return { detectedFrequency, detectedMidi, noteName };
+    const durationMs = timeline.length > 0 ? timeline[timeline.length - 1].timeMs : 0;
+    return { timeline, durationMs };
   }
 
   async stop(): Promise<void> {

@@ -43,10 +43,12 @@ export class SessionService {
     playNote: (note: string) => Promise<void>;
     playReferenceWithTarget: (reference: string, target: string) => Promise<void>;
     playInterval: (first: string, second: string) => Promise<void>;
+    playMelody: (notes: string[]) => Promise<void>;
     stop: () => Promise<void>;
   };
   private pitchCapturePort: {
     capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
+    capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{ detectedMidis: number[]; detectedFrequencies: number[] } | null>;
     stop: () => Promise<void>;
   };
 
@@ -62,19 +64,23 @@ export class SessionService {
     playNote: (note: string) => Promise<void>;
     playReferenceWithTarget: (reference: string, target: string) => Promise<void>;
     playInterval: (first: string, second: string) => Promise<void>;
+    playMelody: (notes: string[]) => Promise<void>;
     stop: () => Promise<void>;
   }, pitchCapturePort?: {
     capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
+    capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{ detectedMidis: number[]; detectedFrequencies: number[] } | null>;
     stop: () => Promise<void>;
   }) {
     this.audioPromptPort = audioPromptPort ?? {
       async playNote() {},
       async playReferenceWithTarget() {},
       async playInterval() {},
+      async playMelody() {},
       async stop() {},
     };
     this.pitchCapturePort = pitchCapturePort ?? {
       async capturePitchSample() { return null; },
+      async capturePitchContour() { return null; },
       async stop() {},
     };
   }
@@ -102,7 +108,7 @@ export class SessionService {
   buildSkillRows() {
     const rows: Array<{ clef: Clef; skillKey: SkillKey; level: number; mastery: number; attemptsTotal: number }> = [];
     this.settings.enabledClefs.forEach((clef) => {
-      SKILL_DEFINITIONS.filter((s) => s.key !== 'sing_melody').forEach((skill) => {
+      SKILL_DEFINITIONS.forEach((skill) => {
         const key = `${clef}.${skill.key}`;
         const record = this.progressBySkill.get(key) ?? createDefaultProgressRecord(key);
         rows.push({ clef, skillKey: skill.key, level: record.level, mastery: record.mastery, attemptsTotal: record.attemptsTotal });
@@ -128,17 +134,11 @@ export class SessionService {
       exerciseCount: this.settings.dailyGoalExercises,
       generator: this.generator,
       includeFamilies: ['visual', 'aural', 'singing'],
-      excludeSkillKeys: ['sing_melody'],
     }) as Exercise[];
     return this.startSession('guided', queue);
   }
 
   startCustomSession(input: { skillKey: SkillKey; clef: Clef; level: number; count: number }) {
-    const skill = SKILL_DEFINITIONS.find((entry) => entry.key === input.skillKey);
-    if (skill?.key === 'sing_melody') {
-      return { ok: false as const, error: 'Melodieaufnahme folgt später. Nutze aktuell Ton oder Intervall singen.' };
-    }
-
     const queue = this.planner.generateCustomSession({ ...input, generator: this.generator }) as Exercise[];
     return this.startSession('custom', queue);
   }
@@ -183,12 +183,33 @@ export class SessionService {
 
     if (exercise.skillKey === 'sing_interval') {
       await this.audioPromptPort.playReferenceWithTarget(String(exercise.prompt.reference), String(exercise.prompt.target));
+      return;
+    }
+
+    if (exercise.skillKey === 'sing_melody') {
+      const notes = Array.isArray((exercise.prompt as any).notes) ? ((exercise.prompt as any).notes as string[]) : [];
+      await this.audioPromptPort.playMelody(notes.map(String));
     }
   }
 
   async captureSingingAttempt() {
     const exercise = this.getCurrentExercise();
     if (!exercise || exercise.family !== 'singing' || this.currentEvaluation) return null;
+
+    if (exercise.skillKey === 'sing_melody') {
+      const targetMidis = Array.isArray((exercise.expectedAnswer as any).targetMidis)
+        ? ((exercise.expectedAnswer as any).targetMidis as number[])
+        : [];
+      const noteCount = Math.max(1, targetMidis.length);
+      const captureDurationMs = noteCount * 900;
+      const contour = await this.pitchCapturePort.capturePitchContour(captureDurationMs, 800);
+      const evaluation = this.evaluator.evaluate(
+        exercise,
+        contour ?? { detectedMidis: [] },
+        { toleranceCents: this.toleranceForLevel(exercise.level) },
+      );
+      return this.applyEvaluation(exercise, evaluation, contour);
+    }
 
     const captured = await this.pitchCapturePort.capturePitchSample(2200);
     const evaluation = this.evaluator.evaluate(

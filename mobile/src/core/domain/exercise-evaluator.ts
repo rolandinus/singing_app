@@ -41,6 +41,60 @@ export class ExerciseEvaluator {
       };
     }
 
+    if (exercise.skillKey === 'sing_melody') {
+      const targetMidis = Array.isArray((exercise.expectedAnswer as any).targetMidis)
+        ? ((exercise.expectedAnswer as any).targetMidis as number[]).filter((midi) => Number.isFinite(midi))
+        : [];
+      const detectedMidis = Array.isArray(submission?.detectedMidis)
+        ? (submission.detectedMidis as number[]).filter((midi) => Number.isFinite(midi))
+        : [];
+      const minAccuracy = Number((exercise.expectedAnswer as any).minAccuracy ?? 0.65);
+      const toleranceCents = Number(options.toleranceCents ?? 50);
+
+      if (targetMidis.length === 0 || detectedMidis.length === 0) {
+        return {
+          correct: false,
+          score: 0,
+          accuracyDetail: { reason: 'no_pitch' },
+          feedback: 'Keine stabile Tonfolge erkannt',
+          telemetry: {},
+        };
+      }
+
+      const normalizedDetected = targetMidis.map((_, targetIdx) => {
+        if (targetMidis.length === 1) return detectedMidis[0];
+        const ratio = targetIdx / (targetMidis.length - 1);
+        const sourceIdx = Math.round(ratio * (detectedMidis.length - 1));
+        return detectedMidis[Math.max(0, Math.min(detectedMidis.length - 1, sourceIdx))];
+      });
+
+      const noteScores = targetMidis.map((targetMidi, idx) => {
+        const centsOff = (normalizedDetected[idx] - targetMidi) * 100;
+        return clamp01(1 - Math.abs(centsOff) / (toleranceCents * 2));
+      });
+      const averageNoteScore = noteScores.reduce((sum, value) => sum + value, 0) / noteScores.length;
+      const lengthCoverage = Math.min(detectedMidis.length, targetMidis.length) / Math.max(detectedMidis.length, targetMidis.length);
+      const score = clamp01(averageNoteScore * lengthCoverage);
+      const correct = score >= minAccuracy;
+
+      return {
+        correct,
+        score,
+        accuracyDetail: {
+          targetMidis,
+          detectedMidis,
+          normalizedDetected,
+          minAccuracy,
+          toleranceCents,
+          lengthCoverage,
+        },
+        feedback: correct
+          ? `Melodie korrekt (${Math.round(score * 100)}%)`
+          : `Melodie abweichend (${Math.round(score * 100)}%)`,
+        telemetry: {},
+      };
+    }
+
     const targetMidi = (exercise.expectedAnswer as any).targetMidi;
     const detectedMidi = submission?.detectedMidi;
     const detectedFrequency = submission?.detectedFrequency;

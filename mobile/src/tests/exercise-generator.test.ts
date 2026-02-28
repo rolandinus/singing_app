@@ -17,4 +17,15 @@ describe('ExerciseGenerator', () => {
     expect(typeof (ex.prompt as any).first).toBe('string');
     expect(typeof (ex.prompt as any).second).toBe('string');
   });
+
+  it('generates sing melody with note sequence and targets', () => {
+    const g = new ExerciseGenerator();
+    const ex = g.generate({ skillKey: 'sing_melody', clef: 'treble', level: 3 });
+
+    expect(ex.skillKey).toBe('sing_melody');
+    expect(Array.isArray((ex.prompt as any).notes)).toBe(true);
+    expect(Array.isArray((ex.expectedAnswer as any).targetMidis)).toBe(true);
+    expect((ex.prompt as any).notes.length).toBeGreaterThanOrEqual(3);
+    expect((ex.prompt as any).notes.length).toBe((ex.expectedAnswer as any).targetMidis.length);
+  });
 });

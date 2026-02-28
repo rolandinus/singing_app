@@ -166,6 +166,19 @@ export class ExpoAudioPromptPort {
     await this.playTone(target);
   }
 
+  async playMelody(notes: string[]): Promise<void> {
+    await this.stop();
+    await this.ensureAudioMode();
+    const sequence = Array.isArray(notes) ? notes : [];
+
+    for (let i = 0; i < sequence.length; i += 1) {
+      await this.playTone(String(sequence[i]));
+      if (i < sequence.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 140));
+      }
+    }
+  }
+
   async stop(): Promise<void> {
     if (!this.activeSound) {
       return;

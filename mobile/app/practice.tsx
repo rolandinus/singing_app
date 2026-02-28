@@ -17,6 +17,7 @@ function promptToNotes(exercise: Exercise | null): string[] {
   if (exercise.skillKey === 'interval_visual') return [String(exercise.prompt.first), String(exercise.prompt.second)];
   if (exercise.skillKey === 'sing_note') return [String(exercise.prompt.target)];
   if (exercise.skillKey === 'sing_interval') return [String(exercise.prompt.reference), String(exercise.prompt.target)];
+  if (exercise.skillKey === 'sing_melody') return Array.isArray(exercise.prompt.notes) ? (exercise.prompt.notes as string[]).map(String) : [];
   return [];
 }
 
@@ -46,7 +47,7 @@ export default function PracticeScreen() {
   const summary = useAppStore((s) => s.summary);
 
   const locale = settings.locale;
-  const familySkills = SKILL_DEFINITIONS.filter((s) => s.family === selectedFamily && s.key !== 'sing_melody');
+  const familySkills = SKILL_DEFINITIONS.filter((s) => s.family === selectedFamily);
 
   useEffect(() => {
     if (summary) {
@@ -140,13 +141,14 @@ export default function PracticeScreen() {
 
             {(currentExercise.skillKey === 'interval_aural'
               || currentExercise.skillKey === 'sing_note'
-              || currentExercise.skillKey === 'sing_interval') ? (
+              || currentExercise.skillKey === 'sing_interval'
+              || currentExercise.skillKey === 'sing_melody') ? (
               <Pressable style={styles.promptButton} onPress={() => void playPrompt()}>
                 <Text style={styles.promptButtonText}>{t(locale, 'play_prompt')}</Text>
               </Pressable>
             ) : null}
 
-            {(currentExercise.skillKey === 'sing_note' || currentExercise.skillKey === 'sing_interval') ? (
+            {currentExercise.family === 'singing' ? (
               <Pressable style={styles.captureButton} onPress={() => void captureSingingAttempt()}>
                 <Text style={styles.captureButtonText}>{t(locale, 'record_and_evaluate')}</Text>
               </Pressable>
@@ -209,6 +211,7 @@ function buildPrompt(exercise: Exercise, locale: 'de' | 'en'): string {
   if (exercise.skillKey === 'interval_aural') return t(locale, 'identify_heard_interval');
   if (exercise.skillKey === 'sing_note') return t(locale, 'sing_note_prompt', { clef: clefLabel(locale, exercise.clef) });
   if (exercise.skillKey === 'sing_interval') return t(locale, 'sing_interval_prompt', { clef: clefLabel(locale, exercise.clef) });
+  if (exercise.skillKey === 'sing_melody') return t(locale, 'sing_melody_prompt', { clef: clefLabel(locale, exercise.clef) });
   return t(locale, 'exercise_unknown');
 }
 
@@ -217,6 +220,7 @@ function buildSubPrompt(exercise: Exercise, locale: 'de' | 'en'): string {
   if (exercise.skillKey === 'interval_aural') return t(locale, 'interval_aural_hint');
   if (exercise.skillKey === 'sing_note') return t(locale, 'sing_note_hint');
   if (exercise.skillKey === 'sing_interval') return t(locale, 'sing_interval_hint');
+  if (exercise.skillKey === 'sing_melody') return t(locale, 'sing_melody_hint');
   return '';
 }
 

@@ -87,6 +87,34 @@ function generateIntervalPair(clef: Clef, level: number) {
   };
 }
 
+function generateMelodyMidis(clef: Clef, level: number): number[] {
+  const pool = getNaturalPool(clef, level).sort((a, b) => a - b);
+  if (pool.length === 0) {
+    return [60, 62, 64];
+  }
+
+  const noteCount = Math.max(3, Math.min(6, level + 2));
+  const maxStep = level >= 4 ? 3 : 2;
+  let index = Math.floor(Math.random() * pool.length);
+  const midis = [pool[index]];
+
+  for (let i = 1; i < noteCount; i += 1) {
+    const step = 1 + Math.floor(Math.random() * maxStep);
+    const direction = Math.random() < 0.6 ? 1 : -1;
+    let next = index + step * direction;
+
+    if (next < 0 || next >= pool.length) {
+      next = index - step * direction;
+    }
+
+    next = Math.max(0, Math.min(pool.length - 1, next));
+    index = next;
+    midis.push(pool[index]);
+  }
+
+  return midis;
+}
+
 export class ExerciseGenerator {
   generate({ skillKey, clef, level }: { skillKey: SkillKey; clef: Clef; level: number }): Exercise {
     switch (skillKey) {
@@ -227,15 +255,24 @@ export class ExerciseGenerator {
   }
 
   private generateSingMelody(clef: Clef, level: number): Exercise {
+    const melodyMidis = generateMelodyMidis(clef, level);
+    const melodyNotes = melodyMidis.map((midi) => midiToScientific(midi));
+
     return {
       id: createExerciseId('sing_melody'),
       family: 'singing',
       skillKey: 'sing_melody',
       level,
       clef,
-      prompt: { type: 'sing_melody' },
+      prompt: {
+        type: 'sing_melody',
+        notes: melodyNotes,
+      },
       choices: [],
-      expectedAnswer: { minAccuracy: 0.65 },
+      expectedAnswer: {
+        targetMidis: melodyMidis,
+        minAccuracy: Math.max(0.55, 0.8 - level * 0.04),
+      },
       metadata: {},
     };
   }
