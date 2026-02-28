@@ -29,4 +29,4 @@ read WORKLOG.md
 - Firebase Robo must run a release APK, not debug (debug fails in Test Lab without Metro).
 - If Firebase matrix creation fails with `TEST_QUOTA_EXCEEDED`, stop reruns and report quota block.
 - Mobile singing scope now includes `sing_melody` recording/evaluation.
-- Keep commits atomic and do not push unless explicitly requested.
+- Do atomic commits but do not push unless explicitly requested.
