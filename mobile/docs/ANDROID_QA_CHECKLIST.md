@@ -1,9 +1,9 @@
-# Android QA Checklist (Phase 3)
+# Android QA Checklist (Phase 5)
 
 ## Scope
 - Build target: Expo React Native app in `mobile/`
-- Feature scope: visual + aural training (`note_naming`, `interval_visual`, `rhythm_id`, `interval_aural`)
-- Deferred scope: singing capture/recording (`sing_note`, `sing_interval`, `sing_melody`)
+- Feature scope: visual + aural + singing recording (`note_naming`, `interval_visual`, `rhythm_id`, `interval_aural`, `sing_note`, `sing_interval`)
+- Deferred scope: singing melody recording (`sing_melody`)
 - Data scope: fresh mobile profile, local persistence via AsyncStorage
 
 ## Test Environment
@@ -27,15 +27,17 @@
 
 ## Guided Session Flow
 - Start guided session from dashboard.
-- Session shows visual + aural exercises only.
+- Session shows visual + aural + singing-note/interval exercises.
 - For aural interval exercises, `Prompt abspielen`/`Play prompt` produces two audible tones.
+- For singing note/interval exercises, `Prompt abspielen` plays reference tones.
+- For singing note/interval exercises, `Aufnehmen und auswerten` records and returns evaluated feedback.
 - Progress bar advances per completed exercise.
 - Selecting an answer shows feedback and highlights.
 - `Nächste Übung`/`Next exercise` is disabled before answering and enabled after answering.
 - Ending session navigates to summary with correct totals and accuracy.
 
 ## Custom Session Flow
-- In Practice, select each visual/aural skill and both clefs.
+- In Practice, select each visual/aural/singing skill (excluding `sing_melody`) and both clefs.
 - Level and count inputs accept valid numbers and clamp out-of-range values.
 - Start custom session produces chosen skill/clef exercises.
 - Ending custom session writes to recent sessions.

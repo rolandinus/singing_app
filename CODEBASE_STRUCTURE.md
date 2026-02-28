@@ -187,5 +187,5 @@
 ## Notes
 
 - Browser app and mobile app currently coexist during migration.
-- Mobile now supports visual + aural interval flows in RN UI.
-- Singing capture/recording flows remain deferred in the RN UI.
+- Mobile now supports visual + aural + singing-note/singing-interval flows in RN UI.
+- Singing melody capture/recording (`sing_melody`) remains deferred in the RN UI.
