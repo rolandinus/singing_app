@@ -1,4 +1,4 @@
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 
 function scientificToMidi(note: string): number {
   const match = /^([A-G])(#?)(-?\d+)$/.exec(String(note).trim());
@@ -87,29 +87,19 @@ function buildSineWaveWavDataUri(frequency: number, durationMs = 650): string {
   return `data:audio/wav;base64,${base64}`;
 }
 
-async function waitForSoundCompletion(sound: Audio.Sound, expectedDurationMs: number): Promise<void> {
+async function waitForPlayerCompletion(player: AudioPlayer, expectedDurationMs: number): Promise<void> {
   await new Promise<void>((resolve) => {
     let settled = false;
     const done = () => {
       if (!settled) {
         settled = true;
+        subscription.remove();
         resolve();
       }
     };
 
-    sound.setOnPlaybackStatusUpdate((status) => {
-      if (!status.isLoaded) {
-        if (status.error) {
-          done();
-        }
-        return;
-      }
-
-      if (status.didJustFinish) {
-        done();
-        return;
-      }
-      if ((status.durationMillis ?? 0) > 0 && (status.positionMillis ?? 0) >= (status.durationMillis ?? 0) - 8) {
+    const subscription = player.addListener('playbackStatusUpdate', (status) => {
+      if (!status.isLoaded || status.didJustFinish) {
         done();
       }
     });
@@ -120,20 +110,19 @@ async function waitForSoundCompletion(sound: Audio.Sound, expectedDurationMs: nu
 
 export class ExpoAudioPromptPort {
   private static configured = false;
-  private activeSound: Audio.Sound | null = null;
+  private activePlayer: AudioPlayer | null = null;
 
   private async ensureAudioMode() {
     if (ExpoAudioPromptPort.configured) {
       return;
     }
 
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      shouldDuckAndroid: true,
-      staysActiveInBackground: false,
-      interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-      interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+    await setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
+      shouldRouteThroughEarpiece: false,
+      interruptionMode: 'duckOthers',
     });
 
     ExpoAudioPromptPort.configured = true;
@@ -144,11 +133,14 @@ export class ExpoAudioPromptPort {
     const frequency = midiToFrequency(midi);
     const durationMs = 650;
     const uri = buildSineWaveWavDataUri(frequency, durationMs);
-    const created = await Audio.Sound.createAsync({ uri }, { shouldPlay: true });
-    this.activeSound = created.sound;
-    await waitForSoundCompletion(created.sound, durationMs);
-    await created.sound.unloadAsync();
-    this.activeSound = null;
+    const player = createAudioPlayer({ uri });
+    this.activePlayer = player;
+    player.play();
+    await waitForPlayerCompletion(player, durationMs);
+    try {
+      player.remove();
+    } catch {}
+    this.activePlayer = null;
   }
 
   async playInterval(first: string, second: string): Promise<void> {
@@ -187,18 +179,18 @@ export class ExpoAudioPromptPort {
   }
 
   async stop(): Promise<void> {
-    if (!this.activeSound) {
+    if (!this.activePlayer) {
       return;
     }
 
-    const sound = this.activeSound;
-    this.activeSound = null;
+    const player = this.activePlayer;
+    this.activePlayer = null;
 
     try {
-      await sound.stopAsync();
+      player.pause();
     } catch {}
     try {
-      await sound.unloadAsync();
+      player.remove();
     } catch {}
   }
 }
