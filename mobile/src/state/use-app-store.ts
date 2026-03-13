@@ -8,6 +8,10 @@ import { ExpoPitchCapturePort } from '../adapters/pitch/expo-pitch-capture-port'
 
 const service = new SessionService(new AsyncStoragePort(), new ExpoAudioPromptPort(), new ExpoPitchCapturePort());
 
+function logStoreDebug(stage: string, details: Record<string, unknown> = {}) {
+  console.log(`[store:end-session] ${stage}`, details);
+}
+
 type StoreState = {
   bootstrapped: boolean;
   settings: AppSettings;
@@ -23,6 +27,8 @@ type StoreState = {
   selectedClef: Clef;
   selectedLevel: number;
   selectedCount: number;
+  /** Index of the note currently being sung during a recording attempt, or null when not recording. */
+  singingNoteIndex: number | null;
   loading: {
     startGuided: boolean;
     startCustom: boolean;
@@ -70,6 +76,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
   selectedClef: 'treble',
   selectedLevel: 1,
   selectedCount: 10,
+  singingNoteIndex: null,
   loading: {
     startGuided: false,
     startCustom: false,
@@ -183,8 +190,29 @@ export const useAppStore = create<StoreState>((set, get) => ({
 
   async captureSingingAttempt() {
     if (get().loading.captureSingingAttempt) return;
-    set((state) => ({ loading: { ...state.loading, captureSingingAttempt: true } }));
+    set((state) => ({ loading: { ...state.loading, captureSingingAttempt: true }, singingNoteIndex: null }));
+
+    const exercise = get().currentExercise;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
     try {
+      // Drive note highlight during recording:
+      // - sing_interval: highlight reference note (index 0) first, then target (index 1) after ~1 s
+      // - sing_melody: advance through each note at ~900 ms per note
+      if (exercise?.skillKey === 'sing_interval') {
+        set({ singingNoteIndex: 0 });
+        timers.push(setTimeout(() => set({ singingNoteIndex: 1 }), 1000));
+      } else if (exercise?.skillKey === 'sing_melody') {
+        const noteCount = Array.isArray((exercise.prompt as Record<string, unknown>).notes)
+          ? ((exercise.prompt as Record<string, unknown>).notes as unknown[]).length
+          : 0;
+        set({ singingNoteIndex: 0 });
+        for (let i = 1; i < noteCount; i += 1) {
+          const delay = i * 900;
+          timers.push(setTimeout(() => set({ singingNoteIndex: i }), delay));
+        }
+      }
+
       const outcome = await service.captureSingingAttempt();
       if (!outcome) return;
 
@@ -192,10 +220,12 @@ export const useAppStore = create<StoreState>((set, get) => ({
         feedback: { text: outcome.feedback, isCorrect: outcome.evaluation.correct },
         answerState: { selectedChoice: null, expectedChoice: null },
         sessionMeta: service.getSessionMeta(),
+        singingNoteIndex: null,
       });
       get().refreshDashboard();
     } finally {
-      set((state) => ({ loading: { ...state.loading, captureSingingAttempt: false } }));
+      timers.forEach(clearTimeout);
+      set((state) => ({ loading: { ...state.loading, captureSingingAttempt: false }, singingNoteIndex: null }));
     }
   },
 
@@ -229,11 +259,30 @@ export const useAppStore = create<StoreState>((set, get) => ({
   },
 
   async endSession() {
-    if (get().loading.endSession) return;
+    if (get().loading.endSession) {
+      logStoreDebug('skipped_already_loading');
+      return;
+    }
+    const stateBefore = get();
+    logStoreDebug('requested', {
+      hasCurrentExercise: Boolean(stateBefore.currentExercise),
+      sessionMode: stateBefore.sessionMeta.mode,
+      sessionIndex: stateBefore.sessionMeta.index,
+      sessionTotal: stateBefore.sessionMeta.total,
+    });
     set((state) => ({ loading: { ...state.loading, endSession: true } }));
     try {
       const ended = await service.endSession();
-      if (!ended) return;
+      if (!ended) {
+        logStoreDebug('service_returned_null');
+        return;
+      }
+
+      logStoreDebug('service_returned_summary', {
+        mode: ended.summary.mode,
+        total: ended.summary.total,
+        correct: ended.summary.correct,
+      });
 
       set({
         summary: ended.summary,
@@ -241,9 +290,18 @@ export const useAppStore = create<StoreState>((set, get) => ({
         sessionMeta: { mode: 'guided', index: 0, total: 0 },
         answerState: { selectedChoice: null, expectedChoice: null },
       });
+      logStoreDebug('state_updated_with_summary', {
+        hasSummary: Boolean(get().summary),
+      });
       get().refreshDashboard();
+    } catch (error) {
+      console.error('[store:end-session] failed', error);
+      throw error;
     } finally {
       set((state) => ({ loading: { ...state.loading, endSession: false } }));
+      logStoreDebug('loading_reset', {
+        loading: get().loading.endSession,
+      });
     }
   },
 

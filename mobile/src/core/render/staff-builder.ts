@@ -32,7 +32,7 @@ export function buildStaffNodes(clef: 'treble' | 'bass') {
   return nodes;
 }
 
-export function buildNoteNodes(notes: string[], clef: 'treble' | 'bass') {
+export function buildNoteNodes(notes: string[], clef: 'treble' | 'bass', highlightIndex: number | null = null) {
   if (!notes.length) return [];
   const startX = STAFF_MARGIN_LEFT + 110;
   const availableWidth = SVG_STAFF_WIDTH - startX - STAFF_MARGIN_LEFT;
@@ -41,6 +41,11 @@ export function buildNoteNodes(notes: string[], clef: 'treble' | 'bass') {
   return notes.map((scientific, index) => {
     const x = startX + index * step;
     const y = yForScientific(scientific, clef);
-    return ellipse({ cx: x, cy: y, rx: 6.5, ry: 5, fill: '#0f172a', stroke: '#0f172a', 'stroke-width': 1.5 });
+    const isHighlighted = highlightIndex !== null && index === highlightIndex;
+    const fill = isHighlighted ? '#2563eb' : '#0f172a';
+    const stroke = isHighlighted ? '#2563eb' : '#0f172a';
+    const rx = isHighlighted ? 8 : 6.5;
+    const ry = isHighlighted ? 6 : 5;
+    return ellipse({ cx: x, cy: y, rx, ry, fill, stroke, 'stroke-width': 1.5 });
   });
 }

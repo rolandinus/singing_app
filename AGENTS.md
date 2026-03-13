@@ -30,3 +30,5 @@ read WORKLOG.md
 - If Firebase matrix creation fails with `TEST_QUOTA_EXCEEDED`, stop reruns and report quota block.
 - Mobile singing scope now includes `sing_melody` recording/evaluation.
 - Do atomic commits but do not push unless explicitly requested.
+
+We will work now only in the mobile app.

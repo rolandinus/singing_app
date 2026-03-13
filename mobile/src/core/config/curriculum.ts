@@ -23,6 +23,26 @@ export const INTERVAL_LABELS: Record<number, string> = {
   8: 'Oktave',
 };
 
+/**
+ * Maps semitone distance to a qualified interval name in German.
+ * Covers the intervals that appear in natural-note pools (no sharps/flats).
+ */
+export const INTERVAL_QUALITY_LABELS: Record<number, string> = {
+  0: 'Prime (rein)',
+  1: 'kleine Sekunde',
+  2: 'große Sekunde',
+  3: 'kleine Terz',
+  4: 'große Terz',
+  5: 'Quarte (rein)',
+  6: 'Tritonus',
+  7: 'Quinte (rein)',
+  8: 'kleine Sexte',
+  9: 'große Sexte',
+  10: 'kleine Septime',
+  11: 'große Septime',
+  12: 'Oktave (rein)',
+};
+
 export const RHYTHM_PATTERNS = [
   { key: 'quarter-quarter-quarter-quarter', label: 'Viertel Viertel Viertel Viertel', display: '♩ ♩ ♩ ♩' },
   { key: 'half-half', label: 'Halbe Halbe', display: '𝅗𝅥 𝅗𝅥' },

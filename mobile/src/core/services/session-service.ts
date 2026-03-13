@@ -18,6 +18,10 @@ function createSessionId(): string {
   return `session-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
 }
 
+function logServiceDebug(stage: string, details: Record<string, unknown> = {}) {
+  console.log(`[service:end-session] ${stage}`, details);
+}
+
 type ActiveSession = {
   sessionId: string;
   mode: 'guided' | 'custom';
@@ -216,7 +220,7 @@ export class SessionService {
     }
 
     if (exercise.skillKey === 'sing_interval') {
-      await this.audioPromptPort.playReferenceWithTarget(String(exercise.prompt.reference), String(exercise.prompt.target));
+      await this.audioPromptPort.playInterval(String(exercise.prompt.reference), String(exercise.prompt.target));
       return;
     }
 
@@ -228,7 +232,8 @@ export class SessionService {
 
   async captureSingingAttempt() {
     const exercise = this.getCurrentExercise();
-    if (!exercise || exercise.family !== 'singing' || this.currentEvaluation) return null;
+    if (!exercise || exercise.family !== 'singing') return null;
+    if (this.currentEvaluation?.correct) return null;
 
     if (exercise.skillKey === 'sing_melody') {
       const targetMidis = Array.isArray((exercise.expectedAnswer as any).targetMidis)
@@ -279,7 +284,18 @@ export class SessionService {
   }
 
   async endSession() {
-    if (!this.activeSession) return null;
+    if (!this.activeSession) {
+      logServiceDebug('no_active_session');
+      return null;
+    }
+
+    logServiceDebug('started', {
+      sessionId: this.activeSession.sessionId,
+      mode: this.activeSession.mode,
+      queueLength: this.activeSession.queue.length,
+      resultCount: this.activeSession.results.length,
+      currentIndex: this.activeSession.index,
+    });
 
     const total = this.activeSession.results.length;
     const correct = this.activeSession.results.filter((r) => r.correct).length;
@@ -301,14 +317,31 @@ export class SessionService {
     const streakDays = computeSessionStreakDays([sessionRecord, ...this.recentSessions]);
     summary.streakDays = streakDays;
 
+    logServiceDebug('saving_session_record', {
+      sessionId: sessionRecord.sessionId,
+      total,
+      correct,
+      accuracy,
+      streakDays,
+    });
     await this.storage.saveSession(sessionRecord);
     this.recentSessions = await this.storage.getRecentSessions(20);
+    logServiceDebug('session_saved', {
+      recentSessionsCount: this.recentSessions.length,
+    });
 
     this.activeSession = null;
     this.currentEvaluation = null;
-    await this.audioPromptPort.stop();
-    await this.pitchCapturePort.stop();
+    logServiceDebug('session_cleared');
+    // Cleanup should not block session finalization if native audio modules stall.
+    void this.audioPromptPort.stop().catch(() => {});
+    void this.pitchCapturePort.stop().catch(() => {});
 
+    logServiceDebug('completed', {
+      summaryMode: summary.mode,
+      total: summary.total,
+      correct: summary.correct,
+    });
     return { summary, sessionRecord };
   }
 
@@ -335,7 +368,7 @@ export class SessionService {
     await this.storage.saveProgress(record);
     this.progressBySkill.set(progressKey, record);
 
-    this.activeSession.results.push({
+    const resultRow: SessionRecord['exercises'][number] = {
       exerciseId: exercise.id,
       skillKey: exercise.skillKey,
       clef: exercise.clef,
@@ -343,7 +376,13 @@ export class SessionService {
       score: evaluation.score,
       submission: extraSubmission,
       evaluatedAt: timestamp,
-    });
+    };
+    const existingResultIdx = this.activeSession.results.findIndex((row) => row.exerciseId === exercise.id);
+    if (existingResultIdx >= 0) {
+      this.activeSession.results[existingResultIdx] = resultRow;
+    } else {
+      this.activeSession.results.push(resultRow);
+    }
 
     const baseFeedback = evaluation.feedback || (evaluation.correct ? 'Richtig' : 'Falsch');
     const feedback = leveledUp ? `${baseFeedback} • Level Up auf L${record.level}` : baseFeedback;

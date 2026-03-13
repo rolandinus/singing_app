@@ -18,6 +18,18 @@ describe('ExerciseGenerator', () => {
     expect(typeof (ex.prompt as any).second).toBe('string');
   });
 
+  it('generates sing interval with intervalLabel and intervalStep in metadata', () => {
+    const g = new ExerciseGenerator();
+    const ex = g.generate({ skillKey: 'sing_interval', clef: 'treble', level: 1 });
+
+    expect(ex.skillKey).toBe('sing_interval');
+    expect(typeof (ex.prompt as any).reference).toBe('string');
+    expect(typeof (ex.prompt as any).target).toBe('string');
+    expect(typeof (ex.metadata as any).intervalStep).toBe('number');
+    expect(typeof (ex.metadata as any).intervalLabel).toBe('string');
+    expect((ex.metadata as any).intervalLabel.length).toBeGreaterThan(0);
+  });
+
   it('generates sing melody with note sequence and targets', () => {
     const g = new ExerciseGenerator();
     const ex = g.generate({ skillKey: 'sing_melody', clef: 'treble', level: 3 });

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { clefLabel, t } from '../../src/core/i18n/translator';
 import type { Clef, Locale } from '../../src/core/types';
@@ -16,103 +16,117 @@ export default function SettingsScreen() {
   const saveSettings = useAppStore((s) => s.saveSettings);
 
   const locale = settings.locale;
+  const saving = loading.saveSettings;
 
-  const [dailyGoal, setDailyGoal] = React.useState(settings.dailyGoalExercises);
-  const [treble, setTreble] = React.useState(settings.enabledClefs.includes('treble'));
-  const [bass, setBass] = React.useState(settings.enabledClefs.includes('bass'));
-  const [defaultClef, setDefaultClef] = React.useState<Clef>(settings.defaultClef);
-  const [selectedLocale, setSelectedLocale] = React.useState<Locale>(settings.locale);
-  const [saved, setSaved] = React.useState(false);
-  const [dailyGoalError, setDailyGoalError] = React.useState('');
+  const treble = settings.enabledClefs.includes('treble');
+  const bass = settings.enabledClefs.includes('bass');
 
-  useEffect(() => {
-    setDailyGoal(settings.dailyGoalExercises);
-    setTreble(settings.enabledClefs.includes('treble'));
-    setBass(settings.enabledClefs.includes('bass'));
-    setDefaultClef(settings.defaultClef);
-    setSelectedLocale(settings.locale);
-    setDailyGoalError('');
-  }, [settings]);
+  function toggleClef(clef: Clef) {
+    const current = settings.enabledClefs;
+    const isEnabled = current.includes(clef);
+    const next = isEnabled ? current.filter((c) => c !== clef) : [...current, clef];
+    const finalClefs: Clef[] = next.length ? next : ['treble'];
+    const defaultClef = finalClefs.includes(settings.defaultClef) ? settings.defaultClef : finalClefs[0];
+    saveSettings({ enabledClefs: finalClefs, defaultClef });
+  }
+
+  function setDefaultClef(clef: Clef) {
+    if (settings.defaultClef === clef) return;
+    saveSettings({ defaultClef: clef });
+  }
+
+  function setDailyGoal(next: number) {
+    if (!Number.isFinite(next) || next < MIN_DAILY_GOAL || next > MAX_DAILY_GOAL) return;
+    if (next === settings.dailyGoalExercises) return;
+    saveSettings({ dailyGoalExercises: next });
+  }
+
+  function setLocale(next: Locale) {
+    if (next === settings.locale) return;
+    saveSettings({ locale: next });
+  }
 
   return (
     <Screen>
       <Card>
-        <Text style={styles.title}>{t(locale, 'settings')}</Text>
+        <View style={styles.titleRow}>
+          <Text style={styles.title}>{t(locale, 'settings')}</Text>
+          {saving ? <ActivityIndicator size="small" color="#1d4ed8" /> : null}
+        </View>
 
         <Text style={styles.label}>{t(locale, 'enabled_clefs')}</Text>
         <View style={styles.row}>
-          <Pressable style={[styles.toggle, treble && styles.toggleOn]} onPress={() => setTreble((v) => !v)}>
+          <Pressable
+            style={[styles.toggle, treble && styles.toggleOn]}
+            onPress={() => toggleClef('treble')}
+            disabled={saving}
+          >
             <Text style={[styles.toggleText, treble && styles.toggleTextOn]}>{clefLabel(locale, 'treble')}</Text>
           </Pressable>
-          <Pressable style={[styles.toggle, bass && styles.toggleOn]} onPress={() => setBass((v) => !v)}>
+          <Pressable
+            style={[styles.toggle, bass && styles.toggleOn]}
+            onPress={() => toggleClef('bass')}
+            disabled={saving}
+          >
             <Text style={[styles.toggleText, bass && styles.toggleTextOn]}>{clefLabel(locale, 'bass')}</Text>
           </Pressable>
         </View>
 
         <Text style={styles.label}>{t(locale, 'default_clef')}</Text>
         <View style={styles.row}>
-          <Pressable style={[styles.toggle, defaultClef === 'treble' && styles.toggleOn]} onPress={() => setDefaultClef('treble')}>
-            <Text style={[styles.toggleText, defaultClef === 'treble' && styles.toggleTextOn]}>{clefLabel(locale, 'treble')}</Text>
+          <Pressable
+            style={[styles.toggle, settings.defaultClef === 'treble' && styles.toggleOn]}
+            onPress={() => setDefaultClef('treble')}
+            disabled={saving}
+          >
+            <Text style={[styles.toggleText, settings.defaultClef === 'treble' && styles.toggleTextOn]}>
+              {clefLabel(locale, 'treble')}
+            </Text>
           </Pressable>
-          <Pressable style={[styles.toggle, defaultClef === 'bass' && styles.toggleOn]} onPress={() => setDefaultClef('bass')}>
-            <Text style={[styles.toggleText, defaultClef === 'bass' && styles.toggleTextOn]}>{clefLabel(locale, 'bass')}</Text>
+          <Pressable
+            style={[styles.toggle, settings.defaultClef === 'bass' && styles.toggleOn]}
+            onPress={() => setDefaultClef('bass')}
+            disabled={saving}
+          >
+            <Text style={[styles.toggleText, settings.defaultClef === 'bass' && styles.toggleTextOn]}>
+              {clefLabel(locale, 'bass')}
+            </Text>
           </Pressable>
         </View>
 
         <Stepper
           label={t(locale, 'daily_goal_label')}
-          value={dailyGoal}
+          value={settings.dailyGoalExercises}
           min={MIN_DAILY_GOAL}
           max={MAX_DAILY_GOAL}
-          onChange={(next) => {
-            setDailyGoal(next);
-            setDailyGoalError('');
-          }}
-          disabled={loading.saveSettings}
+          onChange={setDailyGoal}
+          disabled={saving}
         />
-        {dailyGoalError ? <Text style={styles.error}>{dailyGoalError}</Text> : null}
 
         <Text style={styles.label}>{t(locale, 'language')}</Text>
         <View style={styles.row}>
-          <Pressable style={[styles.toggle, selectedLocale === 'de' && styles.toggleOn]} onPress={() => setSelectedLocale('de')}>
-            <Text style={[styles.toggleText, selectedLocale === 'de' && styles.toggleTextOn]}>{t(locale, 'lang_de')}</Text>
+          <Pressable
+            style={[styles.toggle, settings.locale === 'de' && styles.toggleOn]}
+            onPress={() => setLocale('de')}
+            disabled={saving}
+          >
+            <Text style={[styles.toggleText, settings.locale === 'de' && styles.toggleTextOn]}>{t(locale, 'lang_de')}</Text>
           </Pressable>
-          <Pressable style={[styles.toggle, selectedLocale === 'en' && styles.toggleOn]} onPress={() => setSelectedLocale('en')}>
-            <Text style={[styles.toggleText, selectedLocale === 'en' && styles.toggleTextOn]}>{t(locale, 'lang_en')}</Text>
+          <Pressable
+            style={[styles.toggle, settings.locale === 'en' && styles.toggleOn]}
+            onPress={() => setLocale('en')}
+            disabled={saving}
+          >
+            <Text style={[styles.toggleText, settings.locale === 'en' && styles.toggleTextOn]}>{t(locale, 'lang_en')}</Text>
           </Pressable>
         </View>
-
-        <Pressable
-          style={[styles.save, loading.saveSettings && styles.saveDisabled]}
-          onPress={async () => {
-            const enabledClefs = [treble ? 'treble' : null, bass ? 'bass' : null].filter(Boolean) as Clef[];
-            const finalClefs: Clef[] = enabledClefs.length ? enabledClefs : ['treble'];
-            if (!Number.isFinite(dailyGoal) || dailyGoal < MIN_DAILY_GOAL || dailyGoal > MAX_DAILY_GOAL) {
-              setDailyGoalError(t(locale, 'invalid_goal_range', { min: MIN_DAILY_GOAL, max: MAX_DAILY_GOAL }));
-              return;
-            }
-
-            await saveSettings({
-              enabledClefs: finalClefs,
-              defaultClef: finalClefs.includes(defaultClef) ? defaultClef : finalClefs[0],
-              dailyGoalExercises: dailyGoal,
-              locale: selectedLocale,
-            });
-            setSaved(true);
-            setTimeout(() => setSaved(false), 1500);
-          }}
-          disabled={loading.saveSettings}
-        >
-          {loading.saveSettings ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>{t(locale, 'save')}</Text>}
-        </Pressable>
-
-        {saved ? <Text style={styles.savedText}>{t(selectedLocale, 'saved')}</Text> : null}
       </Card>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 18, fontWeight: '700', color: '#0f172a' },
   label: { fontSize: 13, color: '#64748b', fontWeight: '600' },
   row: { flexDirection: 'row', gap: 8 },
@@ -129,9 +143,4 @@ const styles = StyleSheet.create({
   toggleOn: { backgroundColor: '#dbeafe', borderColor: '#93c5fd' },
   toggleText: { color: '#334155' },
   toggleTextOn: { color: '#1d4ed8', fontWeight: '700' },
-  error: { color: '#be123c', fontSize: 13, fontWeight: '600' },
-  save: { marginTop: 8, backgroundColor: '#1d4ed8', borderRadius: 8, alignItems: 'center', justifyContent: 'center', minHeight: 44 },
-  saveDisabled: { opacity: 0.6 },
-  saveText: { color: '#fff', fontWeight: '700' },
-  savedText: { color: '#047857', fontWeight: '600' },
 });

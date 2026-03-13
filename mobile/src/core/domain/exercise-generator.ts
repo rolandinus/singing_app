@@ -1,4 +1,4 @@
-import { CLEF_NOTE_RANGES, INTERVAL_LABELS, RHYTHM_PATTERNS } from '../config/curriculum';
+import { CLEF_NOTE_RANGES, INTERVAL_LABELS, INTERVAL_QUALITY_LABELS, RHYTHM_PATTERNS } from '../config/curriculum';
 import type { Clef, Exercise, SkillKey } from '../types';
 import { buildDistractorChoices, getNaturalMidiPool, midiToScientific, noteLetter, randomChoice } from '../utils/note-helpers';
 
@@ -236,6 +236,8 @@ export class ExerciseGenerator {
 
   private generateSingInterval(clef: Clef, level: number): Exercise {
     const pair = generateIntervalPair(clef, level);
+    const semitoneDist = Math.abs(pair.secondMidi - pair.firstMidi);
+    const intervalLabel = INTERVAL_QUALITY_LABELS[semitoneDist] ?? INTERVAL_LABELS[pair.intervalStep] ?? String(pair.intervalStep);
 
     return {
       id: createExerciseId('sing_interval'),
@@ -250,7 +252,10 @@ export class ExerciseGenerator {
       },
       choices: [],
       expectedAnswer: { targetMidi: pair.secondMidi },
-      metadata: {},
+      metadata: {
+        intervalStep: pair.intervalStep,
+        intervalLabel,
+      },
     };
   }
 

@@ -22,8 +22,17 @@ function renderNode(node: SvgDescriptor, key: string): React.ReactNode {
   return <Component key={key} {...node.props}>{children}</Component>;
 }
 
-export function StaffSvg({ clef = 'treble', notes = [] }: { clef?: 'treble' | 'bass'; notes?: string[] }) {
-  const nodes = [...buildStaffNodes(clef), ...buildNoteNodes(notes, clef)];
+export function StaffSvg({
+  clef = 'treble',
+  notes = [],
+  highlightIndex,
+}: {
+  clef?: 'treble' | 'bass';
+  notes?: string[];
+  highlightIndex?: number | null;
+}) {
+  const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null);
+  const nodes = [...buildStaffNodes(clef), ...noteNodes];
   const tree = toReactNativeSvgTree(nodes);
 
   return (

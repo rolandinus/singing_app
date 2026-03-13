@@ -37,4 +37,155 @@ describe('SessionService', () => {
     const ended = await service.endSession();
     expect(ended?.summary.total).toBeGreaterThanOrEqual(1);
   });
+
+  it('plays sing interval prompts through the interval playback path', async () => {
+    const calls = {
+      playInterval: [] as Array<[string, string]>,
+      playReferenceWithTarget: [] as Array<[string, string]>,
+    };
+    const service = new SessionService(
+      createMockStorage(),
+      {
+        async playNote() {},
+        async playReferenceWithTarget(reference, target) {
+          calls.playReferenceWithTarget.push([reference, target]);
+        },
+        async playInterval(first, second) {
+          calls.playInterval.push([first, second]);
+        },
+        async playMelody() {},
+        async stop() {},
+      },
+      {
+        async capturePitchSample() { return null; },
+        async capturePitchContour() { return null; },
+        async stop() {},
+      },
+    );
+    await service.init();
+
+    const started = service.startCustomSession({
+      skillKey: 'sing_interval',
+      clef: 'treble',
+      level: 1,
+      count: 1,
+    });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+
+    const exercise = service.getCurrentExercise();
+    expect(exercise?.skillKey).toBe('sing_interval');
+    if (!exercise || exercise.skillKey !== 'sing_interval') return;
+
+    await service.playPrompt();
+
+    expect(calls.playInterval).toEqual([
+      [String(exercise.prompt.reference), String(exercise.prompt.target)],
+    ]);
+    expect(calls.playReferenceWithTarget).toEqual([]);
+  });
+
+  it('ends custom session even when audio cleanup does not resolve', async () => {
+    const never = new Promise<void>(() => {});
+    const service = new SessionService(
+      createMockStorage(),
+      {
+        async playNote() {},
+        async playReferenceWithTarget() {},
+        async playInterval() {},
+        async playMelody() {},
+        stop: () => never,
+      },
+      {
+        async capturePitchSample() { return null; },
+        async capturePitchContour() { return null; },
+        stop: () => never,
+      },
+    );
+    await service.init();
+
+    const started = service.startCustomSession({
+      skillKey: 'note_naming',
+      clef: 'treble',
+      level: 1,
+      count: 3,
+    });
+    expect(started.ok).toBe(true);
+
+    const result = await Promise.race([
+      service.endSession().then((ended) => ({ kind: 'ended' as const, ended })),
+      new Promise<{ kind: 'timeout' }>((resolve) => {
+        setTimeout(() => resolve({ kind: 'timeout' }), 120);
+      }),
+    ]);
+
+    expect(result.kind).toBe('ended');
+    if (result.kind === 'ended') {
+      expect(result.ended?.summary.mode).toBe('custom');
+    }
+  });
+
+  it('allows re-recording singing attempts after an incorrect result', async () => {
+    const capturedContours: number[][] = [];
+    let targetMidis: number[] = [];
+
+    const service = new SessionService(
+      createMockStorage(),
+      {
+        async playNote() {},
+        async playReferenceWithTarget() {},
+        async playInterval() {},
+        async playMelody() {},
+        async stop() {},
+      },
+      {
+        async capturePitchSample() { return null; },
+        async capturePitchContour() {
+          if (capturedContours.length === 0) {
+            const wrong = targetMidis.map((midi) => midi + 7);
+            capturedContours.push(wrong);
+            return { detectedMidis: wrong, detectedFrequencies: wrong.map(() => 440) };
+          }
+          const corrected = [...targetMidis];
+          capturedContours.push(corrected);
+          return { detectedMidis: corrected, detectedFrequencies: corrected.map(() => 440) };
+        },
+        async stop() {},
+      },
+    );
+    await service.init();
+
+    const started = service.startCustomSession({
+      skillKey: 'sing_melody',
+      clef: 'treble',
+      level: 2,
+      count: 1,
+    });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+
+    const exercise = service.getCurrentExercise();
+    expect(exercise?.skillKey).toBe('sing_melody');
+    if (!exercise || exercise.skillKey !== 'sing_melody') return;
+
+    targetMidis = Array.isArray((exercise.expectedAnswer as any).targetMidis)
+      ? ((exercise.expectedAnswer as any).targetMidis as number[])
+      : [];
+    expect(targetMidis.length).toBeGreaterThan(0);
+
+    const first = await service.captureSingingAttempt();
+    expect(first).toBeTruthy();
+    expect(first?.evaluation.correct).toBe(false);
+
+    const second = await service.captureSingingAttempt();
+    expect(second).toBeTruthy();
+    expect(second?.evaluation.correct).toBe(true);
+
+    const step = await service.nextExercise();
+    expect(step.ok).toBe(true);
+    if (step.ok && step.ended) {
+      expect(step.summary?.total).toBe(1);
+      expect(step.summary?.correct).toBe(1);
+    }
+  });
 });
