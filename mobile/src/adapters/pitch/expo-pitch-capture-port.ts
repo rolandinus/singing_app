@@ -1,34 +1,49 @@
 import {
-  AudioModule,
-  RecordingPresets,
-  createAudioPlayer,
   getRecordingPermissionsAsync,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
-  type AudioPlayer,
-  type AudioRecorder,
-  type RecordingOptions,
 } from 'expo-audio';
 import { Platform } from 'react-native';
 import { midiToScientific } from '../../core/utils/note-helpers';
 import { autoCorrelate, noteFromPitch } from '../../core/utils/pitch';
+
+// @siteed/expo-audio-studio is used for real-time PCM streaming on native (iOS/Android).
+// It is not imported on web — the AnalyserNode path is used there instead.
+let studioStartRecording: ((options: StudioRecordingOptions) => Promise<void>) | null = null;
+let studioStopRecording: (() => Promise<void>) | null = null;
+let studioConvertPCMToFloat32: ((data: string, bitDepth: number) => Float32Array) | null = null;
+
+if (Platform.OS !== 'web') {
+  // Dynamic require to avoid bundling on web where the native module is unavailable.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const studio = require('@siteed/expo-audio-studio') as {
+    startRecording: (options: StudioRecordingOptions) => Promise<void>;
+    stopRecording: () => Promise<void>;
+    convertPCMToFloat32: (data: string, bitDepth: number) => Float32Array;
+  };
+  studioStartRecording = studio.startRecording;
+  studioStopRecording = studio.stopRecording;
+  studioConvertPCMToFloat32 = studio.convertPCMToFloat32;
+}
+
+interface StudioAudioStreamEvent {
+  data: string | Float32Array;
+}
+
+interface StudioRecordingOptions {
+  sampleRate: number;
+  encoding: 'pcm_16bit' | 'pcm_32bit';
+  channels: number;
+  interval: number;
+  onAudioStream: (event: StudioAudioStreamEvent) => Promise<void> | void;
+}
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)];
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 type PitchTimelinePoint = { timeMs: number; frequency: number };
-type RecorderCtor = new (options?: Partial<RecordingOptions>) => AudioRecorder;
-type RecorderStatus = {
-  isRecording?: boolean;
-  durationMillis?: number;
-  metering?: number;
-};
 
 export type PitchCaptureDebugSnapshot = {
   phase: 'idle' | 'request_permission' | 'recording' | 'recorded' | 'analyzing' | 'analysis_sample' | 'analysis_complete' | 'error';
@@ -44,27 +59,10 @@ export type PitchCaptureDebugSnapshot = {
 };
 type PitchCaptureDebugListener = ((snapshot: PitchCaptureDebugSnapshot) => void) | null;
 
-const WEB_POLYFILLED_RECORDING_OPTIONS: Partial<RecordingOptions> = {
-  ...RecordingPresets.HIGH_QUALITY,
-  extension: '.wav',
-  web: {
-    ...(RecordingPresets.HIGH_QUALITY.web ?? {}),
-    mimeType: 'audio/wav',
-  },
-};
-
 export class ExpoPitchCapturePort {
-  private activeRecording: AudioRecorder | null = null;
-  private analysisPlayer: AudioPlayer | null = null;
+  /** True while a native streaming session is active. */
+  private nativeStreaming = false;
   private debugListener: PitchCaptureDebugListener = null;
-
-  private recordingOptions(): Partial<RecordingOptions> {
-    const base = Platform.OS === 'web' ? WEB_POLYFILLED_RECORDING_OPTIONS : RecordingPresets.HIGH_QUALITY;
-    return {
-      ...base,
-      isMeteringEnabled: true,
-    };
-  }
 
   setDebugListener(listener: PitchCaptureDebugListener): void {
     this.debugListener = listener;
@@ -81,17 +79,6 @@ export class ExpoPitchCapturePort {
         timestampMs: Date.now(),
       });
     } catch {}
-  }
-
-  private recorderStatusSnapshot(status: RecorderStatus): Pick<PitchCaptureDebugSnapshot, 'isRecording' | 'durationMillis' | 'metering'> {
-    const meteringCandidate = Number(status.metering);
-    const durationCandidate = Number(status.durationMillis);
-
-    return {
-      isRecording: Boolean(status.isRecording),
-      durationMillis: Number.isFinite(durationCandidate) ? durationCandidate : 0,
-      metering: Number.isFinite(meteringCandidate) ? meteringCandidate : null,
-    };
   }
 
   private async ensurePermissions() {
@@ -117,83 +104,100 @@ export class ExpoPitchCapturePort {
     });
   }
 
-  private async configureAudioModeForPlayback() {
-    await setAudioModeAsync({
-      allowsRecording: false,
-      playsInSilentMode: true,
-      shouldPlayInBackground: false,
-      shouldRouteThroughEarpiece: false,
-      interruptionMode: 'duckOthers',
-    });
-  }
+  // ---------------------------------------------------------------------------
+  // Native real-time streaming path
+  // ---------------------------------------------------------------------------
 
-  private createRecorder(): AudioRecorder {
-    const moduleWithRecorder = AudioModule as unknown as {
-      AudioRecorder?: RecorderCtor;
-      AudioRecorderWeb?: RecorderCtor;
-    };
-    const Recorder = moduleWithRecorder.AudioRecorder ?? moduleWithRecorder.AudioRecorderWeb;
-
-    if (!Recorder) {
-      throw new Error('Audio recorder is unavailable on this platform.');
+  /**
+   * Streams PCM from the microphone in real time using @siteed/expo-audio-studio,
+   * collecting pitch samples for `durationMs` milliseconds.
+   * Returns the accumulated pitch timeline.
+   */
+  private async streamPitchNative(durationMs: number): Promise<{ timeline: PitchTimelinePoint[] }> {
+    if (!studioStartRecording || !studioStopRecording || !studioConvertPCMToFloat32) {
+      throw new Error('Native audio studio module is not available.');
     }
 
-    return new Recorder(this.recordingOptions());
-  }
-
-  private async recordFor(durationMs: number): Promise<string | null> {
     await this.stop();
     await this.ensurePermissions();
     await this.configureAudioModeForRecording();
 
-    const recorder = this.createRecorder();
-    this.activeRecording = recorder;
-    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    const timeline: PitchTimelinePoint[] = [];
+    const startedAt = Date.now();
+    const convertPCM = studioConvertPCMToFloat32;
 
-    try {
-      await recorder.prepareToRecordAsync(this.recordingOptions());
-      this.emitDebug({
-        phase: 'recording',
-        ...this.recorderStatusSnapshot(recorder.getStatus() as RecorderStatus),
-        message: 'recording_started',
-      });
-      recorder.record();
-      pollInterval = setInterval(() => {
-        try {
-          const status = recorder.getStatus() as RecorderStatus;
+    this.emitDebug({ phase: 'recording', isRecording: true, message: 'recording_started' });
+    this.nativeStreaming = true;
+
+    await new Promise<void>((resolve, reject) => {
+      const timeoutHandle = setTimeout(() => {
+        resolve();
+      }, durationMs);
+
+      studioStartRecording!({
+        sampleRate: 44100,
+        encoding: 'pcm_16bit',
+        channels: 1,
+        // ~2028 samples per callback at 44100 Hz — good window size for autoCorrelate
+        interval: 46,
+        onAudioStream: ({ data }) => {
+          if (!this.nativeStreaming) return;
+
+          const elapsed = Date.now() - startedAt;
+          if (elapsed >= durationMs) {
+            clearTimeout(timeoutHandle);
+            resolve();
+            return;
+          }
+
+          let pcm: Float32Array;
+          if (typeof data === 'string') {
+            try {
+              pcm = convertPCM(data, 16);
+            } catch {
+              return;
+            }
+          } else {
+            pcm = data;
+          }
+
+          if (pcm.length < 256) return;
+
+          const freq = autoCorrelate(pcm, 44100);
+          if (!Number.isFinite(freq) || freq < 60 || freq > 1200) return;
+
+          timeline.push({ timeMs: elapsed, frequency: freq });
+
           this.emitDebug({
-            phase: 'recording',
-            ...this.recorderStatusSnapshot(status),
+            phase: 'analysis_sample',
+            frequency: freq,
+            sampleTimeMs: elapsed,
+            timelinePoints: timeline.length,
           });
-        } catch {}
-      }, 120);
-      await sleep(durationMs);
-      await recorder.stop();
-      let statusAfterStop: RecorderStatus = {};
-      try {
-        statusAfterStop = recorder.getStatus() as RecorderStatus;
-      } catch {}
-      this.emitDebug({
-        phase: 'recorded',
-        ...this.recorderStatusSnapshot(statusAfterStop),
-        uri: recorder.uri ?? null,
-        message: 'recording_finished',
+        },
+      }).catch((err) => {
+        clearTimeout(timeoutHandle);
+        reject(err);
       });
-    } catch (error) {
-      this.emitDebug({
-        phase: 'error',
-        message: error instanceof Error ? error.message : 'recording_failed',
-      });
-      throw error;
-    } finally {
-      if (pollInterval) {
-        clearInterval(pollInterval);
-      }
-      this.activeRecording = null;
-    }
+    });
 
-    return recorder.uri;
+    this.nativeStreaming = false;
+    try {
+      await studioStopRecording();
+    } catch {}
+
+    this.emitDebug({
+      phase: 'analysis_complete',
+      timelinePoints: timeline.length,
+      message: timeline.length > 0 ? 'analysis_finished' : 'analysis_finished_without_pitch',
+    });
+
+    return { timeline };
   }
+
+  // ---------------------------------------------------------------------------
+  // Web path (AnalyserNode — unchanged)
+  // ---------------------------------------------------------------------------
 
   private async capturePitchSampleWeb(durationMs: number): Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null> {
     this.emitDebug({ phase: 'request_permission', message: 'checking_permissions' });
@@ -323,22 +327,20 @@ export class ExpoPitchCapturePort {
     return { detectedFrequencies, detectedMidis: detectedFrequencies.map((f) => noteFromPitch(f)) };
   }
 
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
   async capturePitchSample(durationMs: number): Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null> {
     if (Platform.OS === 'web') {
       return this.capturePitchSampleWeb(Math.max(500, durationMs));
     }
 
-    const uri = await this.recordFor(Math.max(500, durationMs));
-    if (!uri) {
-      return null;
-    }
+    const captureMs = Math.max(500, durationMs);
+    const { timeline } = await this.streamPitchNative(captureMs);
+    const frequencies = timeline.map((point) => point.frequency);
 
-    const analysis = await this.analyzeRecording(uri, Math.max(4000, durationMs + 1500));
-    const frequencies = analysis.timeline.map((point) => point.frequency);
-
-    if (frequencies.length === 0) {
-      return null;
-    }
+    if (frequencies.length === 0) return null;
 
     const detectedFrequency = median(frequencies);
     const detectedMidi = noteFromPitch(detectedFrequency);
@@ -353,38 +355,28 @@ export class ExpoPitchCapturePort {
     }
 
     const captureMs = Math.max(1000, durationMs);
-    const uri = await this.recordFor(captureMs);
-    if (!uri) {
-      return null;
-    }
+    const { timeline } = await this.streamPitchNative(captureMs);
 
-    const analysis = await this.analyzeRecording(uri, Math.max(4500, captureMs + 1500));
-    if (analysis.timeline.length === 0) {
-      return null;
-    }
+    if (timeline.length === 0) return null;
 
     const safeSegmentMs = Math.max(250, segmentMs);
-    const totalDurationMs = Math.max(safeSegmentMs, analysis.durationMs);
+    const totalDurationMs = Math.max(safeSegmentMs, captureMs);
     const segmentCount = Math.max(1, Math.round(totalDurationMs / safeSegmentMs));
     const detectedFrequencies: number[] = [];
 
     for (let segment = 0; segment < segmentCount; segment += 1) {
       const start = segment * safeSegmentMs;
       const end = start + safeSegmentMs;
-      const inWindow = analysis.timeline
+      const inWindow = timeline
         .filter((point) => point.timeMs >= start && point.timeMs < end)
         .map((point) => point.frequency);
 
-      if (inWindow.length === 0) {
-        continue;
-      }
+      if (inWindow.length === 0) continue;
 
       detectedFrequencies.push(median(inWindow));
     }
 
-    if (detectedFrequencies.length === 0) {
-      return null;
-    }
+    if (detectedFrequencies.length === 0) return null;
 
     return {
       detectedFrequencies,
@@ -392,124 +384,14 @@ export class ExpoPitchCapturePort {
     };
   }
 
-  private async analyzeRecording(uri: string, timeoutMs: number): Promise<{ timeline: PitchTimelinePoint[]; durationMs: number }> {
-    await this.configureAudioModeForPlayback();
-    this.emitDebug({
-      phase: 'analyzing',
-      uri,
-      message: 'analysis_started',
-    });
-
-    const timeline: PitchTimelinePoint[] = [];
-    let startedAt = 0;
-    let lastSampleDebugMs = 0;
-
-    const player = createAudioPlayer({ uri }, { updateInterval: 50 });
-    this.analysisPlayer = player;
-
-    const sampleSubscription = player.addListener('audioSampleUpdate', (sample) => {
-      const frames = sample.channels[0]?.frames;
-      if (!frames || frames.length < 256) {
-        return;
-      }
-
-      const frequency = autoCorrelate(Float32Array.from(frames), 44_100);
-      if (!Number.isFinite(frequency) || frequency <= 0) {
-        return;
-      }
-
-      if (frequency < 60 || frequency > 1200) {
-        return;
-      }
-
-      if (!startedAt) {
-        startedAt = Date.now();
-      }
-
-      timeline.push({
-        timeMs: Math.max(0, Date.now() - startedAt),
-        frequency,
-      });
-
-      const now = Date.now();
-      if (now - lastSampleDebugMs >= 120) {
-        const latest = timeline[timeline.length - 1];
-        this.emitDebug({
-          phase: 'analysis_sample',
-          frequency: latest?.frequency ?? null,
-          sampleTimeMs: latest?.timeMs ?? 0,
-          timelinePoints: timeline.length,
-        });
-        lastSampleDebugMs = now;
-      }
-    });
-
-    player.setAudioSamplingEnabled(true);
-
-    try {
-      await new Promise<void>((resolve) => {
-        let settled = false;
-
-        const done = () => {
-          if (!settled) {
-            settled = true;
-            statusSubscription.remove();
-            resolve();
-          }
-        };
-
-        const statusSubscription = player.addListener('playbackStatusUpdate', (status) => {
-          if (!status.isLoaded || status.didJustFinish) {
-            done();
-          }
-        });
-
-        setTimeout(done, timeoutMs);
-
-        try {
-          player.play();
-        } catch {
-          done();
-        }
-      });
-    } finally {
-      sampleSubscription.remove();
-      try {
-        player.pause();
-      } catch {}
-      try {
-        player.remove();
-      } catch {}
-      this.analysisPlayer = null;
-    }
-
-    const durationMs = timeline.length > 0 ? timeline[timeline.length - 1].timeMs : 0;
-    this.emitDebug({
-      phase: 'analysis_complete',
-      timelinePoints: timeline.length,
-      durationMillis: durationMs,
-      frequency: timeline.length > 0 ? timeline[timeline.length - 1].frequency : null,
-      message: timeline.length > 0 ? 'analysis_finished' : 'analysis_finished_without_pitch',
-    });
-    return { timeline, durationMs };
-  }
-
   async stop(): Promise<void> {
-    if (this.activeRecording) {
-      try {
-        await this.activeRecording.stop();
-      } catch {}
-      this.activeRecording = null;
-    }
-
-    if (this.analysisPlayer) {
-      try {
-        this.analysisPlayer.pause();
-      } catch {}
-      try {
-        this.analysisPlayer.remove();
-      } catch {}
-      this.analysisPlayer = null;
+    if (this.nativeStreaming) {
+      this.nativeStreaming = false;
+      if (studioStopRecording) {
+        try {
+          await studioStopRecording();
+        } catch {}
+      }
     }
 
     this.emitDebug({
