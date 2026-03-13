@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { INTERVAL_LABELS, SKILL_DEFINITIONS } from '../../src/core/config/curriculum';
-import { clefLabel, modeLabel, skillLabel, t, type TranslationKey } from '../../src/core/i18n/translator';
+import { clefLabel, localeTag, modeLabel, skillLabel, t, type TranslationKey } from '../../src/core/i18n/translator';
 import type { Exercise, ExerciseFamily, SkillKey } from '../../src/core/types';
 import { useAppStore } from '../../src/state/use-app-store';
 import { Card } from '../../src/ui/components/Card';
@@ -52,6 +52,7 @@ export default function PracticeScreen() {
   const playPrompt = useAppStore((s) => s.playPrompt);
   const captureSingingAttempt = useAppStore((s) => s.captureSingingAttempt);
   const singingNoteIndex = useAppStore((s) => s.singingNoteIndex);
+  const pitchDebug = useAppStore((s) => s.pitchDebug);
   const nextExercise = useAppStore((s) => s.nextExercise);
   const endSession = useAppStore((s) => s.endSession);
   const locale = settings.locale;
@@ -208,6 +209,18 @@ export default function PracticeScreen() {
                 </Pressable>
               ) : null}
 
+              {currentExercise.family === 'singing' ? (
+                <View style={styles.debugPanel}>
+                  <Text style={styles.debugTitle}>{t(locale, 'mic_debug_title')}</Text>
+                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_phase')}: {pitchDebug.phase}</Text>
+                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_duration_ms')}: {formatDebugInteger(locale, pitchDebug.durationMillis)}</Text>
+                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_metering_db')}: {formatDebugDecimal(locale, pitchDebug.metering)}</Text>
+                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_frequency_hz')}: {formatDebugDecimal(locale, pitchDebug.frequency)}</Text>
+                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_timeline_points')}: {formatDebugInteger(locale, pitchDebug.timelinePoints)}</Text>
+                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_updated')}: {formatDebugTimestamp(locale, pitchDebug.timestampMs)}</Text>
+                </View>
+              ) : null}
+
               <View style={styles.choicesRow}>
                 {currentExercise.choices.map((choice) => {
                   const key = String(choice);
@@ -336,6 +349,23 @@ function labelForChoice(skillKey: string, choice: string, metadata: Record<strin
   return choice;
 }
 
+function formatDebugInteger(locale: 'de' | 'en', value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return t(locale, 'mic_debug_na');
+  return String(Math.round(value));
+}
+
+function formatDebugDecimal(locale: 'de' | 'en', value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return t(locale, 'mic_debug_na');
+  return value.toFixed(1);
+}
+
+function formatDebugTimestamp(locale: 'de' | 'en', timestampMs: number | null): string {
+  if (timestampMs == null || !Number.isFinite(timestampMs)) return t(locale, 'mic_debug_na');
+  return new Date(timestampMs).toLocaleTimeString(localeTag(locale), {
+    hour12: false,
+  });
+}
+
 const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
   label: { fontSize: 13, color: '#64748b', fontWeight: '600' },
@@ -358,6 +388,9 @@ const styles = StyleSheet.create({
   promptButtonText: { color: '#334155', fontWeight: '600' },
   captureButton: { alignSelf: 'flex-start', borderRadius: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: '#f59e0b' },
   captureButtonText: { color: '#fff', fontWeight: '700' },
+  debugPanel: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, backgroundColor: '#f8fafc', padding: 10, gap: 3 },
+  debugTitle: { color: '#0f172a', fontWeight: '700', fontSize: 13 },
+  debugLine: { color: '#334155', fontSize: 12 },
   choicesRow: { gap: 8 },
   choice: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: '#f8fafc' },
   choiceSelected: { borderColor: '#60a5fa' },

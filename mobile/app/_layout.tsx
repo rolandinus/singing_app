@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { useAppStore } from '../src/state/use-app-store';
 import { t } from '../src/core/i18n/translator';
+import '../src/polyfills/audio-recorder-polyfill';
 
 export default function RootLayout() {
   const bootstrap = useAppStore((s) => s.bootstrap);

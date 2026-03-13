@@ -78,6 +78,7 @@ export class SessionService {
   private pitchCapturePort: {
     capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
     capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{ detectedMidis: number[]; detectedFrequencies: number[] } | null>;
+    setDebugListener?: (listener: ((snapshot: unknown) => void) | null) => void;
     stop: () => Promise<void>;
   };
 
@@ -98,6 +99,7 @@ export class SessionService {
   }, pitchCapturePort?: {
     capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
     capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{ detectedMidis: number[]; detectedFrequencies: number[] } | null>;
+    setDebugListener?: (listener: ((snapshot: unknown) => void) | null) => void;
     stop: () => Promise<void>;
   }) {
     this.audioPromptPort = audioPromptPort ?? {
@@ -154,6 +156,10 @@ export class SessionService {
   getCurrentExercise(): Exercise | null {
     if (!this.activeSession) return null;
     return this.activeSession.queue[this.activeSession.index] ?? null;
+  }
+
+  setPitchDebugListener(listener: ((snapshot: unknown) => void) | null): void {
+    this.pitchCapturePort.setDebugListener?.(listener);
   }
 
   startGuidedSession() {

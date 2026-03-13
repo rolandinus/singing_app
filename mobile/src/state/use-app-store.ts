@@ -4,12 +4,55 @@ import { SessionService } from '../core/services/session-service';
 import type { AppSettings, Clef, Exercise, ExerciseFamily, SessionRecord, SessionSummary, SkillKey } from '../core/types';
 import { AsyncStoragePort } from '../adapters/storage/async-storage-port';
 import { ExpoAudioPromptPort } from '../adapters/audio/expo-audio-prompt-port';
-import { ExpoPitchCapturePort } from '../adapters/pitch/expo-pitch-capture-port';
+import { ExpoPitchCapturePort, type PitchCaptureDebugSnapshot } from '../adapters/pitch/expo-pitch-capture-port';
 
-const service = new SessionService(new AsyncStoragePort(), new ExpoAudioPromptPort(), new ExpoPitchCapturePort());
+const pitchCapturePort = new ExpoPitchCapturePort();
+const service = new SessionService(new AsyncStoragePort(), new ExpoAudioPromptPort(), pitchCapturePort);
 
 function logStoreDebug(stage: string, details: Record<string, unknown> = {}) {
   console.log(`[store:end-session] ${stage}`, details);
+}
+
+type PitchDebugState = {
+  phase: PitchCaptureDebugSnapshot['phase'];
+  timestampMs: number | null;
+  durationMillis: number;
+  metering: number | null;
+  frequency: number | null;
+  sampleTimeMs: number | null;
+  timelinePoints: number;
+  uri: string | null;
+  message: string;
+};
+
+const INITIAL_PITCH_DEBUG_STATE: PitchDebugState = {
+  phase: 'idle',
+  timestampMs: null,
+  durationMillis: 0,
+  metering: null,
+  frequency: null,
+  sampleTimeMs: null,
+  timelinePoints: 0,
+  uri: null,
+  message: '',
+};
+
+function mergePitchDebugState(previous: PitchDebugState, snapshot: PitchCaptureDebugSnapshot): PitchDebugState {
+  const next: PitchDebugState = {
+    ...previous,
+    phase: snapshot.phase,
+    timestampMs: snapshot.timestampMs,
+  };
+
+  if (snapshot.durationMillis !== undefined) next.durationMillis = snapshot.durationMillis;
+  if (snapshot.metering !== undefined) next.metering = snapshot.metering;
+  if (snapshot.frequency !== undefined) next.frequency = snapshot.frequency;
+  if (snapshot.sampleTimeMs !== undefined) next.sampleTimeMs = snapshot.sampleTimeMs;
+  if (snapshot.timelinePoints !== undefined) next.timelinePoints = snapshot.timelinePoints;
+  if (snapshot.uri !== undefined) next.uri = snapshot.uri;
+  if (snapshot.message !== undefined) next.message = snapshot.message;
+
+  return next;
 }
 
 type StoreState = {
@@ -29,6 +72,7 @@ type StoreState = {
   selectedCount: number;
   /** Index of the note currently being sung during a recording attempt, or null when not recording. */
   singingNoteIndex: number | null;
+  pitchDebug: PitchDebugState;
   loading: {
     startGuided: boolean;
     startCustom: boolean;
@@ -77,6 +121,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
   selectedLevel: 1,
   selectedCount: 10,
   singingNoteIndex: null,
+  pitchDebug: { ...INITIAL_PITCH_DEBUG_STATE },
   loading: {
     startGuided: false,
     startCustom: false,
@@ -89,6 +134,10 @@ export const useAppStore = create<StoreState>((set, get) => ({
   },
 
   async bootstrap() {
+    service.setPitchDebugListener((snapshot) => {
+      set((state) => ({ pitchDebug: mergePitchDebugState(state.pitchDebug, snapshot as PitchCaptureDebugSnapshot) }));
+    });
+
     await service.init();
     const settings = service.getSettings();
     const clefs = service.getClefChoices();
@@ -190,7 +239,15 @@ export const useAppStore = create<StoreState>((set, get) => ({
 
   async captureSingingAttempt() {
     if (get().loading.captureSingingAttempt) return;
-    set((state) => ({ loading: { ...state.loading, captureSingingAttempt: true }, singingNoteIndex: null }));
+    set((state) => ({
+      loading: { ...state.loading, captureSingingAttempt: true },
+      singingNoteIndex: null,
+      pitchDebug: {
+        ...INITIAL_PITCH_DEBUG_STATE,
+        timestampMs: Date.now(),
+        message: 'capture_requested',
+      },
+    }));
 
     const exercise = get().currentExercise;
     const timers: ReturnType<typeof setTimeout>[] = [];

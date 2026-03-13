@@ -33,7 +33,8 @@
         {
           "microphonePermission": "Allow Singing App to access your microphone for singing exercises."
         }
-      ]
+      ],
+      "expo-audio"
     ]
   }
 }

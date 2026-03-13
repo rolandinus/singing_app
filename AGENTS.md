@@ -31,4 +31,11 @@ read WORKLOG.md
 - Mobile singing scope now includes `sing_melody` recording/evaluation.
 - Do atomic commits but do not push unless explicitly requested.
 
+## Avoid Deprecated Patterns
+
+- Do not add new `expo-av` usage. Use `expo-audio` for audio playback/recording instead.
+- Do not use React Native's built-in `SafeAreaView`. Use `react-native-safe-area-context` instead.
+- Do not use the legacy top-level Expo `splash` config. Use the `expo-splash-screen` config plugin instead.
+- Do not opt out of React Native New Architecture with `newArchEnabled: false`. Keep the app on the default Expo SDK 54+ architecture path.
+
 We will work now only in the mobile app.
