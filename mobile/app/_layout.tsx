@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAppStore } from '../src/state/use-app-store';
 import { t } from '../src/core/i18n/translator';
 import '../src/polyfills/audio-recorder-polyfill';
@@ -13,9 +14,11 @@ export default function RootLayout() {
   }, [bootstrap]);
 
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="summary" options={{ title: t(locale, 'nav_summary'), presentation: 'modal' }} />
-    </Stack>
+    <SafeAreaProvider>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="summary" options={{ title: t(locale, 'nav_summary'), presentation: 'modal' }} />
+      </Stack>
+    </SafeAreaProvider>
   );
 }
