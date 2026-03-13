@@ -33,6 +33,54 @@ type ActiveSession = {
   startProgressBySkill: Record<string, { mastery: number; level: number }>;
 };
 
+/** Timing parameters derived from BPM for melody playback and capture. */
+export type MelodyTimingModel = {
+  bpm: number;
+  noteDurationMs: number;
+  gapMs: number;
+  segmentMs: number;
+  captureDurationMs: number;
+};
+
+/** Per-note correctness result after a melody attempt. */
+export type MelodyNoteResult = {
+  noteIndex: number;
+  targetMidi: number;
+  detectedMidi: number | null;
+  correct: boolean;
+  score: number;
+};
+
+export const DEFAULT_MELODY_BPM = 72;
+export const COUNT_IN_BEATS = 4;
+
+/** Compute note-by-note results from evaluation detail. */
+export function computeMelodyNoteResults(
+  targetMidis: number[],
+  normalizedDetected: number[],
+  toleranceCents: number,
+): MelodyNoteResult[] {
+  return targetMidis.map((targetMidi, i) => {
+    const detectedMidi = normalizedDetected[i] ?? null;
+    if (detectedMidi === null || !Number.isFinite(detectedMidi)) {
+      return { noteIndex: i, targetMidi, detectedMidi: null, correct: false, score: 0 };
+    }
+    const centsOff = Math.abs((detectedMidi - targetMidi) * 100);
+    const score = Math.max(0, Math.min(1, 1 - centsOff / (toleranceCents * 2)));
+    return { noteIndex: i, targetMidi, detectedMidi, correct: centsOff <= toleranceCents, score };
+  });
+}
+
+/** Build a timing model for a given BPM (quarter-note = one melody note). */
+export function buildMelodyTimingModel(bpm: number, noteCount: number): MelodyTimingModel {
+  const safeBpm = Math.max(40, Math.min(200, bpm));
+  const noteDurationMs = Math.round((60 / safeBpm) * 1000);
+  const gapMs = Math.round(noteDurationMs * 0.15);
+  const segmentMs = Math.round(noteDurationMs * 0.9);
+  const captureDurationMs = noteCount * noteDurationMs + 500;
+  return { bpm: safeBpm, noteDurationMs, gapMs, segmentMs, captureDurationMs };
+}
+
 function toLocalDateKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -237,7 +285,7 @@ export class SessionService {
     }
   }
 
-  async captureSingingAttempt() {
+  async captureSingingAttempt(options: { bpm?: number; onCountInBeat?: (beat: number) => void; onNoteIndex?: (index: number) => void } = {}) {
     const exercise = this.getCurrentExercise();
     if (!exercise || exercise.family !== 'singing') return null;
     if (this.currentEvaluation?.correct) return null;
@@ -247,14 +295,46 @@ export class SessionService {
         ? ((exercise.expectedAnswer as any).targetMidis as number[])
         : [];
       const noteCount = Math.max(1, targetMidis.length);
-      const captureDurationMs = noteCount * 900;
-      const contour = await this.pitchCapturePort.capturePitchContour(captureDurationMs, 800);
+      const toleranceCents = this.toleranceForLevel(exercise.level);
+      const timing = buildMelodyTimingModel(options.bpm ?? DEFAULT_MELODY_BPM, noteCount);
+
+      // Count-in phase: fire beat callbacks before capture starts.
+      if (options.onCountInBeat) {
+        for (let beat = 1; beat <= COUNT_IN_BEATS; beat += 1) {
+          options.onCountInBeat(beat);
+          await new Promise<void>((resolve) => setTimeout(resolve, timing.noteDurationMs));
+        }
+      }
+
+      // Launch note-index callbacks while capture runs concurrently.
+      const noteTimers: ReturnType<typeof setTimeout>[] = [];
+      if (options.onNoteIndex) {
+        for (let i = 0; i < noteCount; i += 1) {
+          const delay = i * timing.noteDurationMs;
+          noteTimers.push(setTimeout(() => options.onNoteIndex!(i), delay));
+        }
+      }
+
+      let contour: { detectedMidis: number[]; detectedFrequencies: number[] } | null = null;
+      try {
+        contour = await this.pitchCapturePort.capturePitchContour(timing.captureDurationMs, timing.segmentMs);
+      } finally {
+        noteTimers.forEach(clearTimeout);
+      }
+
       const evaluation = this.evaluator.evaluate(
         exercise,
         contour ?? { detectedMidis: [] },
-        { toleranceCents: this.toleranceForLevel(exercise.level) },
+        { toleranceCents },
       );
-      return this.applyEvaluation(exercise, evaluation, contour);
+
+      // Compute per-note results from evaluation detail.
+      const normalizedDetected = Array.isArray((evaluation.accuracyDetail as any).normalizedDetected)
+        ? ((evaluation.accuracyDetail as any).normalizedDetected as number[])
+        : [];
+      const noteResults = computeMelodyNoteResults(targetMidis, normalizedDetected, toleranceCents);
+
+      return this.applyEvaluation(exercise, evaluation, contour, null, noteResults);
     }
 
     const captured = await this.pitchCapturePort.capturePitchSample(2200);
@@ -265,6 +345,66 @@ export class SessionService {
     );
 
     return this.applyEvaluation(exercise, evaluation, captured);
+  }
+
+  /** Stop active prompt playback (no-op if not playing). */
+  async stopPrompt(): Promise<void> {
+    await this.audioPromptPort.stop();
+  }
+
+  /** Stop active pitch capture (no-op if not capturing). */
+  async stopCapture(): Promise<void> {
+    await this.pitchCapturePort.stop();
+  }
+
+  /** Regenerate the current sing_melody exercise with a fresh melody, keeping the same options. */
+  regenerateMelody(): Exercise | null {
+    if (!this.activeSession) return null;
+    const exercise = this.getCurrentExercise();
+    if (!exercise || exercise.skillKey !== 'sing_melody') return null;
+
+    const options: MelodyOptions = {
+      firstNoteMode: (exercise.metadata.melodyFirstNoteMode as any) ?? 'random',
+      allowedIntervalSteps: Array.isArray(exercise.metadata.melodyAllowedIntervalSteps)
+        ? (exercise.metadata.melodyAllowedIntervalSteps as number[])
+        : [1, 2, 3],
+    };
+    const newExercise = this.generator.generate({
+      skillKey: 'sing_melody',
+      clef: exercise.clef,
+      level: exercise.level,
+      melodyOptions: options,
+    });
+
+    this.activeSession.queue[this.activeSession.index] = newExercise;
+    this.currentEvaluation = null;
+    return newExercise;
+  }
+
+  /** Play a single note for audition (e.g., tap on staff note). */
+  async auditNote(note: string): Promise<void> {
+    await this.audioPromptPort.playNote(note);
+  }
+
+  /** Play the melody prompt with BPM-aware note-gap timing. */
+  async playMelodyWithTiming(bpm: number): Promise<void> {
+    const exercise = this.getCurrentExercise();
+    if (!exercise || exercise.skillKey !== 'sing_melody') return;
+    const notes = Array.isArray((exercise.prompt as any).notes) ? ((exercise.prompt as any).notes as string[]) : [];
+    if (notes.length === 0) return;
+
+    await this.audioPromptPort.stop();
+
+    const timing = buildMelodyTimingModel(bpm, notes.length);
+    // Use the audio port's melody method which handles sequencing.
+    // We pass a custom gap via the playMelody interface which uses fixed 140 ms gaps.
+    // For BPM-aware gaps we drive notes manually via playNote + gap.
+    for (let i = 0; i < notes.length; i += 1) {
+      await this.audioPromptPort.playNote(String(notes[i]));
+      if (i < notes.length - 1) {
+        await new Promise<void>((resolve) => setTimeout(resolve, timing.gapMs));
+      }
+    }
   }
 
   async nextExercise() {
@@ -362,7 +502,7 @@ export class SessionService {
     return Number.isFinite(Number(configured)) ? Number(configured) : 50;
   }
 
-  private async applyEvaluation(exercise: Exercise, evaluation: EvaluationResult, extraSubmission: unknown = null, selectedChoice: string | null = null) {
+  private async applyEvaluation(exercise: Exercise, evaluation: EvaluationResult, extraSubmission: unknown = null, selectedChoice: string | null = null, noteResults: MelodyNoteResult[] = []) {
     if (!this.activeSession) return null;
 
     this.currentEvaluation = evaluation;
@@ -400,6 +540,7 @@ export class SessionService {
       feedback,
       selectedChoice,
       expectedChoice: (exercise.expectedAnswer as any)?.answer != null ? String((exercise.expectedAnswer as any).answer) : null,
+      noteResults,
     };
   }
 

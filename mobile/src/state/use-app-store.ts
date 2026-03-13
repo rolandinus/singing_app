@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { DEFAULT_SETTINGS, SKILL_DEFINITIONS } from '../core/config/curriculum';
 import { DEFAULT_MELODY_OPTIONS } from '../core/domain/exercise-generator';
-import { SessionService } from '../core/services/session-service';
+import { SessionService, DEFAULT_MELODY_BPM, COUNT_IN_BEATS, type MelodyNoteResult } from '../core/services/session-service';
 import type { AppSettings, Clef, Exercise, ExerciseFamily, MelodyOptions, SessionRecord, SessionSummary, SkillKey } from '../core/types';
 import { AsyncStoragePort } from '../adapters/storage/async-storage-port';
 import { ExpoAudioPromptPort } from '../adapters/audio/expo-audio-prompt-port';
@@ -76,6 +76,12 @@ type StoreState = {
   /** Index of the note currently being sung during a recording attempt, or null when not recording. */
   singingNoteIndex: number | null;
   pitchDebug: PitchDebugState;
+  /** BPM used for melody playback and capture timing. */
+  melodyBpm: number;
+  /** Current count-in beat (1–4) during count-in phase, null otherwise. */
+  melodyCountInBeat: number | null;
+  /** Per-note correctness results after a melody attempt. */
+  melodyNoteResults: MelodyNoteResult[];
   loading: {
     startGuided: boolean;
     startCustom: boolean;
@@ -85,6 +91,7 @@ type StoreState = {
     nextExercise: boolean;
     endSession: boolean;
     saveSettings: boolean;
+    stopPlayback: boolean;
   };
   bootstrap: () => Promise<void>;
   refreshDashboard: () => void;
@@ -92,7 +99,17 @@ type StoreState = {
   startCustom: () => Promise<void>;
   submitChoice: (choice: string) => Promise<void>;
   playPrompt: () => Promise<void>;
+  /** Play melody prompt using BPM-aware timing. */
+  playMelodyPrompt: () => Promise<void>;
   captureSingingAttempt: () => Promise<void>;
+  /** Stop active prompt playback. */
+  stopPlayback: () => Promise<void>;
+  /** Regenerate the current melody exercise with a new melody. */
+  regenerateMelody: () => void;
+  /** Audition a single note by name (tap on staff). */
+  auditMelodyNote: (note: string) => Promise<void>;
+  /** Set the BPM for melody trainer. */
+  setMelodyBpm: (bpm: number) => void;
   nextExercise: () => Promise<void>;
   endSession: () => Promise<void>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<void>;
@@ -127,6 +144,9 @@ export const useAppStore = create<StoreState>((set, get) => ({
   selectedMelodyOptions: { ...DEFAULT_MELODY_OPTIONS },
   singingNoteIndex: null,
   pitchDebug: { ...INITIAL_PITCH_DEBUG_STATE },
+  melodyBpm: DEFAULT_MELODY_BPM,
+  melodyCountInBeat: null,
+  melodyNoteResults: [],
   loading: {
     startGuided: false,
     startCustom: false,
@@ -136,6 +156,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
     nextExercise: false,
     endSession: false,
     saveSettings: false,
+    stopPlayback: false,
   },
 
   async bootstrap() {
@@ -250,11 +271,53 @@ export const useAppStore = create<StoreState>((set, get) => ({
     }
   },
 
+  async playMelodyPrompt() {
+    if (get().loading.playPrompt) return;
+    set((state) => ({ loading: { ...state.loading, playPrompt: true } }));
+    try {
+      await service.playMelodyWithTiming(get().melodyBpm);
+    } finally {
+      set((state) => ({ loading: { ...state.loading, playPrompt: false } }));
+    }
+  },
+
+  async stopPlayback() {
+    if (get().loading.stopPlayback) return;
+    set((state) => ({ loading: { ...state.loading, stopPlayback: true } }));
+    try {
+      await service.stopPrompt();
+    } finally {
+      set((state) => ({ loading: { ...state.loading, stopPlayback: false, playPrompt: false } }));
+    }
+  },
+
+  regenerateMelody() {
+    const newExercise = service.regenerateMelody();
+    if (newExercise) {
+      set({
+        currentExercise: newExercise,
+        feedback: { text: '', isCorrect: false },
+        answerState: { selectedChoice: null, expectedChoice: null },
+        melodyNoteResults: [],
+        singingNoteIndex: null,
+      });
+    }
+  },
+
+  async auditMelodyNote(note: string) {
+    await service.auditNote(note);
+  },
+
+  setMelodyBpm(bpm: number) {
+    set({ melodyBpm: Math.max(40, Math.min(200, bpm)) });
+  },
+
   async captureSingingAttempt() {
     if (get().loading.captureSingingAttempt) return;
     set((state) => ({
       loading: { ...state.loading, captureSingingAttempt: true },
       singingNoteIndex: null,
+      melodyCountInBeat: null,
       pitchDebug: {
         ...INITIAL_PITCH_DEBUG_STATE,
         timestampMs: Date.now(),
@@ -266,36 +329,64 @@ export const useAppStore = create<StoreState>((set, get) => ({
     const timers: ReturnType<typeof setTimeout>[] = [];
 
     try {
-      // Drive note highlight during recording:
-      // - sing_interval: highlight reference note (index 0) first, then target (index 1) after ~1 s
-      // - sing_melody: advance through each note at ~900 ms per note
       if (exercise?.skillKey === 'sing_interval') {
+        // Drive note highlight for sing_interval: reference then target after ~1s.
         set({ singingNoteIndex: 0 });
         timers.push(setTimeout(() => set({ singingNoteIndex: 1 }), 1000));
+
+        const outcome = await service.captureSingingAttempt();
+        if (!outcome) return;
+
+        set({
+          feedback: { text: outcome.feedback, isCorrect: outcome.evaluation.correct },
+          answerState: { selectedChoice: null, expectedChoice: null },
+          sessionMeta: service.getSessionMeta(),
+          singingNoteIndex: null,
+        });
+        get().refreshDashboard();
       } else if (exercise?.skillKey === 'sing_melody') {
-        const noteCount = Array.isArray((exercise.prompt as Record<string, unknown>).notes)
-          ? ((exercise.prompt as Record<string, unknown>).notes as unknown[]).length
-          : 0;
-        set({ singingNoteIndex: 0 });
-        for (let i = 1; i < noteCount; i += 1) {
-          const delay = i * 900;
-          timers.push(setTimeout(() => set({ singingNoteIndex: i }), delay));
-        }
+        const bpm = get().melodyBpm;
+
+        // Clear previous note results.
+        set({ melodyNoteResults: [] });
+
+        const outcome = await service.captureSingingAttempt({
+          bpm,
+          onCountInBeat: (beat) => {
+            set({ melodyCountInBeat: beat });
+          },
+          onNoteIndex: (index) => {
+            set({ singingNoteIndex: index, melodyCountInBeat: null });
+          },
+        });
+
+        if (!outcome) return;
+
+        set({
+          feedback: { text: outcome.feedback, isCorrect: outcome.evaluation.correct },
+          answerState: { selectedChoice: null, expectedChoice: null },
+          sessionMeta: service.getSessionMeta(),
+          singingNoteIndex: null,
+          melodyCountInBeat: null,
+          melodyNoteResults: outcome.noteResults ?? [],
+        });
+        get().refreshDashboard();
+      } else {
+        // Generic singing (sing_note).
+        const outcome = await service.captureSingingAttempt();
+        if (!outcome) return;
+
+        set({
+          feedback: { text: outcome.feedback, isCorrect: outcome.evaluation.correct },
+          answerState: { selectedChoice: null, expectedChoice: null },
+          sessionMeta: service.getSessionMeta(),
+          singingNoteIndex: null,
+        });
+        get().refreshDashboard();
       }
-
-      const outcome = await service.captureSingingAttempt();
-      if (!outcome) return;
-
-      set({
-        feedback: { text: outcome.feedback, isCorrect: outcome.evaluation.correct },
-        answerState: { selectedChoice: null, expectedChoice: null },
-        sessionMeta: service.getSessionMeta(),
-        singingNoteIndex: null,
-      });
-      get().refreshDashboard();
     } finally {
       timers.forEach(clearTimeout);
-      set((state) => ({ loading: { ...state.loading, captureSingingAttempt: false }, singingNoteIndex: null }));
+      set((state) => ({ loading: { ...state.loading, captureSingingAttempt: false }, singingNoteIndex: null, melodyCountInBeat: null }));
     }
   },
 
@@ -322,6 +413,9 @@ export const useAppStore = create<StoreState>((set, get) => ({
         sessionMeta: service.getSessionMeta(),
         feedback: { text: '', isCorrect: false },
         answerState: { selectedChoice: null, expectedChoice: null },
+        melodyNoteResults: [],
+        melodyCountInBeat: null,
+        singingNoteIndex: null,
       });
     } finally {
       set((state) => ({ loading: { ...state.loading, nextExercise: false } }));

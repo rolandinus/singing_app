@@ -7,6 +7,7 @@ import type { Exercise, ExerciseFamily, MelodyFirstNoteMode, SkillKey } from '..
 import { useAppStore } from '../../src/state/use-app-store';
 import { Card } from '../../src/ui/components/Card';
 import { HearingPromptSvg } from '../../src/ui/components/HearingPromptSvg';
+import { MelodyTrainerPanel } from '../../src/ui/components/MelodyTrainerPanel';
 import { Screen } from '../../src/ui/components/Screen';
 import { StaffSvg } from '../../src/ui/components/StaffSvg';
 import { Stepper } from '../../src/ui/components/Stepper';
@@ -52,6 +53,14 @@ export default function PracticeScreen() {
   const summary = useAppStore((s) => s.summary);
   const submitChoice = useAppStore((s) => s.submitChoice);
   const playPrompt = useAppStore((s) => s.playPrompt);
+  const playMelodyPrompt = useAppStore((s) => s.playMelodyPrompt);
+  const stopPlayback = useAppStore((s) => s.stopPlayback);
+  const regenerateMelody = useAppStore((s) => s.regenerateMelody);
+  const auditMelodyNote = useAppStore((s) => s.auditMelodyNote);
+  const setMelodyBpm = useAppStore((s) => s.setMelodyBpm);
+  const melodyBpm = useAppStore((s) => s.melodyBpm);
+  const melodyCountInBeat = useAppStore((s) => s.melodyCountInBeat);
+  const melodyNoteResults = useAppStore((s) => s.melodyNoteResults);
   const captureSingingAttempt = useAppStore((s) => s.captureSingingAttempt);
   const singingNoteIndex = useAppStore((s) => s.singingNoteIndex);
   const pitchDebug = useAppStore((s) => s.pitchDebug);
@@ -230,82 +239,112 @@ export default function PracticeScreen() {
 
           {currentExercise ? (
             <>
-              <Text style={styles.prompt}>{buildPrompt(currentExercise, locale)}</Text>
-              {subPrompt ? <Text style={styles.subPrompt}>{subPrompt}</Text> : null}
-
-              {currentExercise.skillKey === 'sing_interval' && currentExercise.metadata.intervalLabel ? (
-                <Text style={styles.intervalName}>{String(currentExercise.metadata.intervalLabel)}</Text>
-              ) : null}
-
-              {currentExercise.skillKey === 'interval_aural' ? (
-                <HearingPromptSvg />
-              ) : currentExercise.skillKey !== 'rhythm_id' ? (
-                <StaffSvg
-                  clef={currentExercise.clef}
-                  notes={promptToNotes(currentExercise)}
-                  highlightIndex={loading.captureSingingAttempt ? singingNoteIndex : null}
+              {/* sing_melody gets its own dedicated trainer panel */}
+              {currentExercise.skillKey === 'sing_melody' ? (
+                <MelodyTrainerPanel
+                  exercise={currentExercise}
+                  locale={locale}
+                  bpm={melodyBpm}
+                  countInBeat={melodyCountInBeat}
+                  noteResults={melodyNoteResults}
+                  singingNoteIndex={singingNoteIndex}
+                  feedback={feedback}
+                  loadingPlay={loading.playPrompt}
+                  loadingCapture={loading.captureSingingAttempt}
+                  loadingStop={loading.stopPlayback}
+                  onPlay={() => void playMelodyPrompt()}
+                  onRecord={() => void captureSingingAttempt()}
+                  onStop={() => void stopPlayback()}
+                  onRegenerate={() => regenerateMelody()}
+                  onTapNote={(note) => void auditMelodyNote(note)}
+                  onChangeBpm={setMelodyBpm}
                 />
               ) : (
-                <Text style={styles.rhythm}>{String(currentExercise.prompt.display)}</Text>
+                <>
+                  <Text style={styles.prompt}>{buildPrompt(currentExercise, locale)}</Text>
+                  {subPrompt ? <Text style={styles.subPrompt}>{subPrompt}</Text> : null}
+
+                  {currentExercise.skillKey === 'sing_interval' && currentExercise.metadata.intervalLabel ? (
+                    <Text style={styles.intervalName}>{String(currentExercise.metadata.intervalLabel)}</Text>
+                  ) : null}
+
+                  {currentExercise.skillKey === 'interval_aural' ? (
+                    <HearingPromptSvg />
+                  ) : currentExercise.skillKey !== 'rhythm_id' ? (
+                    <StaffSvg
+                      clef={currentExercise.clef}
+                      notes={promptToNotes(currentExercise)}
+                      highlightIndex={loading.captureSingingAttempt ? singingNoteIndex : null}
+                    />
+                  ) : (
+                    <Text style={styles.rhythm}>{String(currentExercise.prompt.display)}</Text>
+                  )}
+
+                  {(currentExercise.skillKey === 'interval_aural'
+                    || currentExercise.skillKey === 'sing_note'
+                    || currentExercise.skillKey === 'sing_interval') ? (
+                    <Pressable style={[styles.promptButton, loading.playPrompt && styles.disabledButton]} onPress={() => void playPrompt()} disabled={loading.playPrompt}>
+                      {loading.playPrompt ? <ActivityIndicator color="#334155" /> : <Text style={styles.promptButtonText}>{t(locale, 'play_prompt')}</Text>}
+                    </Pressable>
+                  ) : null}
+
+                  {currentExercise.family === 'singing' ? (
+                    <Pressable
+                      style={[styles.captureButton, loading.captureSingingAttempt && styles.disabledButton]}
+                      onPress={() => void captureSingingAttempt()}
+                      disabled={loading.captureSingingAttempt}
+                    >
+                      {loading.captureSingingAttempt ? <ActivityIndicator color="#fff" /> : <Text style={styles.captureButtonText}>{t(locale, 'record_and_evaluate')}</Text>}
+                    </Pressable>
+                  ) : null}
+
+                  {currentExercise.family === 'singing' ? (
+                    <View style={styles.debugPanel}>
+                      <Text style={styles.debugTitle}>{t(locale, 'mic_debug_title')}</Text>
+                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_phase')}: {pitchDebug.phase}</Text>
+                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_duration_ms')}: {formatDebugInteger(locale, pitchDebug.durationMillis)}</Text>
+                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_metering_db')}: {formatDebugDecimal(locale, pitchDebug.metering)}</Text>
+                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_frequency_hz')}: {formatDebugDecimal(locale, pitchDebug.frequency)}</Text>
+                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_timeline_points')}: {formatDebugInteger(locale, pitchDebug.timelinePoints)}</Text>
+                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_updated')}: {formatDebugTimestamp(locale, pitchDebug.timestampMs)}</Text>
+                    </View>
+                  ) : null}
+
+                  {feedback.text ? (
+                    <Text style={[styles.feedback, feedback.isCorrect ? styles.feedbackOk : styles.feedbackBad]}>{feedback.text}</Text>
+                  ) : null}
+                </>
               )}
 
-              {(currentExercise.skillKey === 'interval_aural'
-                || currentExercise.skillKey === 'sing_note'
-                || currentExercise.skillKey === 'sing_interval'
-                || currentExercise.skillKey === 'sing_melody') ? (
-                <Pressable style={[styles.promptButton, loading.playPrompt && styles.disabledButton]} onPress={() => void playPrompt()} disabled={loading.playPrompt}>
-                  {loading.playPrompt ? <ActivityIndicator color="#334155" /> : <Text style={styles.promptButtonText}>{t(locale, 'play_prompt')}</Text>}
-                </Pressable>
-              ) : null}
+              {currentExercise.choices.length > 0 ? (
+                <View style={styles.choicesRow}>
+                  {currentExercise.choices.map((choice) => {
+                    const key = String(choice);
+                    const selected = answerState.selectedChoice === key;
+                    const isCorrectChoice = answerState.expectedChoice === key;
+                    const isWrongSelected = selected && answerState.expectedChoice !== key;
 
-              {currentExercise.family === 'singing' ? (
-                <Pressable
-                  style={[styles.captureButton, loading.captureSingingAttempt && styles.disabledButton]}
-                  onPress={() => void captureSingingAttempt()}
-                  disabled={loading.captureSingingAttempt}
-                >
-                  {loading.captureSingingAttempt ? <ActivityIndicator color="#fff" /> : <Text style={styles.captureButtonText}>{t(locale, 'record_and_evaluate')}</Text>}
-                </Pressable>
-              ) : null}
-
-              {currentExercise.family === 'singing' ? (
-                <View style={styles.debugPanel}>
-                  <Text style={styles.debugTitle}>{t(locale, 'mic_debug_title')}</Text>
-                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_phase')}: {pitchDebug.phase}</Text>
-                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_duration_ms')}: {formatDebugInteger(locale, pitchDebug.durationMillis)}</Text>
-                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_metering_db')}: {formatDebugDecimal(locale, pitchDebug.metering)}</Text>
-                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_frequency_hz')}: {formatDebugDecimal(locale, pitchDebug.frequency)}</Text>
-                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_timeline_points')}: {formatDebugInteger(locale, pitchDebug.timelinePoints)}</Text>
-                  <Text style={styles.debugLine}>{t(locale, 'mic_debug_updated')}: {formatDebugTimestamp(locale, pitchDebug.timestampMs)}</Text>
+                    return (
+                      <Pressable
+                        key={key}
+                        style={[
+                          styles.choice,
+                          selected && styles.choiceSelected,
+                          isCorrectChoice && styles.choiceCorrect,
+                          isWrongSelected && styles.choiceWrong,
+                        ]}
+                        onPress={() => void submitChoice(key)}
+                        disabled={Boolean(answerState.selectedChoice) || loading.submitChoice || loading.captureSingingAttempt}
+                      >
+                        <Text style={styles.choiceText}>{labelForChoice(currentExercise.skillKey, key, currentExercise.metadata)}</Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
               ) : null}
 
-              <View style={styles.choicesRow}>
-                {currentExercise.choices.map((choice) => {
-                  const key = String(choice);
-                  const selected = answerState.selectedChoice === key;
-                  const isCorrectChoice = answerState.expectedChoice === key;
-                  const isWrongSelected = selected && answerState.expectedChoice !== key;
-
-                  return (
-                    <Pressable
-                      key={key}
-                      style={[
-                        styles.choice,
-                        selected && styles.choiceSelected,
-                        isCorrectChoice && styles.choiceCorrect,
-                        isWrongSelected && styles.choiceWrong,
-                      ]}
-                      onPress={() => void submitChoice(key)}
-                      disabled={Boolean(answerState.selectedChoice) || loading.submitChoice || loading.captureSingingAttempt}
-                    >
-                      <Text style={styles.choiceText}>{labelForChoice(currentExercise.skillKey, key, currentExercise.metadata)}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              {feedback.text ? (
+              {/* Feedback for non-melody exercises (melody shows its own feedback in MelodyTrainerPanel) */}
+              {currentExercise.skillKey !== 'sing_melody' && feedback.text ? (
                 <Text style={[styles.feedback, feedback.isCorrect ? styles.feedbackOk : styles.feedbackBad]}>{feedback.text}</Text>
               ) : null}
 
