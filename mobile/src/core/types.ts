@@ -1,6 +1,17 @@
 export type Clef = 'treble' | 'bass';
 export type Locale = 'de' | 'en';
 export type ExerciseFamily = 'visual' | 'aural' | 'singing';
+
+/** First-note selection mode for melody generation. */
+export type MelodyFirstNoteMode = 'random' | 'C2' | 'C4';
+
+/** Configurable options for sing_melody exercise generation. */
+export type MelodyOptions = {
+  /** Which note to start the melody on. */
+  firstNoteMode: MelodyFirstNoteMode;
+  /** Diatonic interval steps (1–8) allowed when building successive notes. */
+  allowedIntervalSteps: number[];
+};
 export type SkillKey =
   | 'note_naming'
   | 'interval_visual'

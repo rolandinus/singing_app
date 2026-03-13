@@ -3,7 +3,7 @@ import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { INTERVAL_LABELS, SKILL_DEFINITIONS } from '../../src/core/config/curriculum';
 import { clefLabel, localeTag, modeLabel, skillLabel, t, type TranslationKey } from '../../src/core/i18n/translator';
-import type { Exercise, ExerciseFamily, SkillKey } from '../../src/core/types';
+import type { Exercise, ExerciseFamily, MelodyFirstNoteMode, SkillKey } from '../../src/core/types';
 import { useAppStore } from '../../src/state/use-app-store';
 import { Card } from '../../src/ui/components/Card';
 import { HearingPromptSvg } from '../../src/ui/components/HearingPromptSvg';
@@ -35,11 +35,13 @@ export default function PracticeScreen() {
   const selectedClef = useAppStore((s) => s.selectedClef);
   const selectedLevel = useAppStore((s) => s.selectedLevel);
   const selectedCount = useAppStore((s) => s.selectedCount);
+  const selectedMelodyOptions = useAppStore((s) => s.selectedMelodyOptions);
   const setSelectedFamily = useAppStore((s) => s.setSelectedFamily);
   const setSelectedSkill = useAppStore((s) => s.setSelectedSkill);
   const setSelectedClef = useAppStore((s) => s.setSelectedClef);
   const setSelectedLevel = useAppStore((s) => s.setSelectedLevel);
   const setSelectedCount = useAppStore((s) => s.setSelectedCount);
+  const setSelectedMelodyOptions = useAppStore((s) => s.setSelectedMelodyOptions);
   const loading = useAppStore((s) => s.loading);
   const startCustom = useAppStore((s) => s.startCustom);
 
@@ -152,6 +154,63 @@ export default function PracticeScreen() {
               <Stepper label={t(locale, 'count')} value={selectedCount} min={1} max={50} onChange={setSelectedCount} disabled={loading.startCustom} />
             </View>
           </View>
+
+          {selectedSkill === 'sing_melody' ? (
+            <View style={styles.melodyOptionsPanel}>
+              <Text style={styles.melodyOptionsTitle}>{t(locale, 'melody_options_title')}</Text>
+
+              <Text style={styles.label}>{t(locale, 'melody_first_note')}</Text>
+              <View style={styles.chipsRow}>
+                {(['random', 'C2', 'C4'] as MelodyFirstNoteMode[]).map((mode) => {
+                  const labelKey = mode === 'random'
+                    ? 'melody_first_note_random'
+                    : mode === 'C2'
+                      ? 'melody_first_note_c2'
+                      : 'melody_first_note_c4';
+                  return (
+                    <Pressable
+                      key={mode}
+                      style={[styles.chip, selectedMelodyOptions.firstNoteMode === mode && styles.chipActive]}
+                      onPress={() => setSelectedMelodyOptions({ firstNoteMode: mode })}
+                      disabled={loading.startCustom}
+                    >
+                      <Text style={[styles.chipText, selectedMelodyOptions.firstNoteMode === mode && styles.chipTextActive]}>
+                        {t(locale, labelKey)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.label}>{t(locale, 'melody_intervals')}</Text>
+              <View style={styles.chipsRow}>
+                {([1, 2, 3, 4, 5, 6, 7, 8] as number[]).map((step) => {
+                  const active = selectedMelodyOptions.allowedIntervalSteps.includes(step);
+                  return (
+                    <Pressable
+                      key={step}
+                      style={[styles.chip, active && styles.chipActive]}
+                      disabled={loading.startCustom}
+                      onPress={() => {
+                        const current = selectedMelodyOptions.allowedIntervalSteps;
+                        const next = active
+                          ? current.filter((s) => s !== step)
+                          : [...current, step].sort((a, b) => a - b);
+                        setSelectedMelodyOptions({ allowedIntervalSteps: next });
+                      }}
+                    >
+                      <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                        {INTERVAL_LABELS[step] ?? String(step)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {selectedMelodyOptions.allowedIntervalSteps.length === 0 ? (
+                <Text style={styles.melodyOptionsError}>{t(locale, 'melody_intervals_empty_error')}</Text>
+              ) : null}
+            </View>
+          ) : null}
 
           <Pressable style={[styles.primaryButton, loading.startCustom && styles.disabledButton]} onPress={() => void startCustom()} disabled={loading.startCustom}>
             {loading.startCustom ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>{t(locale, 'start_custom')}</Text>}
@@ -415,4 +474,7 @@ const styles = StyleSheet.create({
   disabledButton: { opacity: 0.45 },
   secondaryButtonText: { color: '#334155', fontWeight: '600' },
   muted: { color: '#64748b' },
+  melodyOptionsPanel: { borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, backgroundColor: '#eff6ff', padding: 12, gap: 8 },
+  melodyOptionsTitle: { fontSize: 14, fontWeight: '700', color: '#1e40af' },
+  melodyOptionsError: { fontSize: 12, color: '#be123c', fontWeight: '600' },
 });

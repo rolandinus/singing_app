@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { DEFAULT_SETTINGS, SKILL_DEFINITIONS } from '../core/config/curriculum';
+import { DEFAULT_MELODY_OPTIONS } from '../core/domain/exercise-generator';
 import { SessionService } from '../core/services/session-service';
-import type { AppSettings, Clef, Exercise, ExerciseFamily, SessionRecord, SessionSummary, SkillKey } from '../core/types';
+import type { AppSettings, Clef, Exercise, ExerciseFamily, MelodyOptions, SessionRecord, SessionSummary, SkillKey } from '../core/types';
 import { AsyncStoragePort } from '../adapters/storage/async-storage-port';
 import { ExpoAudioPromptPort } from '../adapters/audio/expo-audio-prompt-port';
 import { ExpoPitchCapturePort, type PitchCaptureDebugSnapshot } from '../adapters/pitch/expo-pitch-capture-port';
@@ -70,6 +71,8 @@ type StoreState = {
   selectedClef: Clef;
   selectedLevel: number;
   selectedCount: number;
+  /** Melody-specific generation options, shown only when sing_melody is selected. */
+  selectedMelodyOptions: MelodyOptions;
   /** Index of the note currently being sung during a recording attempt, or null when not recording. */
   singingNoteIndex: number | null;
   pitchDebug: PitchDebugState;
@@ -98,6 +101,7 @@ type StoreState = {
   setSelectedClef: (value: Clef) => void;
   setSelectedLevel: (value: number) => void;
   setSelectedCount: (value: number) => void;
+  setSelectedMelodyOptions: (value: Partial<MelodyOptions>) => void;
   clearSummary: () => void;
 };
 
@@ -120,6 +124,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
   selectedClef: 'treble',
   selectedLevel: 1,
   selectedCount: 10,
+  selectedMelodyOptions: { ...DEFAULT_MELODY_OPTIONS },
   singingNoteIndex: null,
   pitchDebug: { ...INITIAL_PITCH_DEBUG_STATE },
   loading: {
@@ -182,11 +187,19 @@ export const useAppStore = create<StoreState>((set, get) => ({
     set((state) => ({ loading: { ...state.loading, startCustom: true } }));
     try {
       const state = get();
+
+      // Validate melody options before starting: require at least one interval step.
+      if (state.selectedSkill === 'sing_melody' && state.selectedMelodyOptions.allowedIntervalSteps.length === 0) {
+        set({ feedback: { text: 'Mindestens ein Intervall muss ausgewählt sein.', isCorrect: false } });
+        return;
+      }
+
       const started = service.startCustomSession({
         skillKey: state.selectedSkill,
         clef: state.selectedClef,
         level: state.selectedLevel,
         count: state.selectedCount,
+        melodyOptions: state.selectedSkill === 'sing_melody' ? state.selectedMelodyOptions : undefined,
       });
 
       if (!started.ok) {
@@ -383,5 +396,8 @@ export const useAppStore = create<StoreState>((set, get) => ({
   setSelectedClef(value) { set({ selectedClef: value }); },
   setSelectedLevel(value) { set({ selectedLevel: Math.max(1, Math.min(5, value)) }); },
   setSelectedCount(value) { set({ selectedCount: Math.max(1, Math.min(50, value)) }); },
+  setSelectedMelodyOptions(partial) {
+    set((state) => ({ selectedMelodyOptions: { ...state.selectedMelodyOptions, ...partial } }));
+  },
   clearSummary() { set({ summary: null }); },
 }));

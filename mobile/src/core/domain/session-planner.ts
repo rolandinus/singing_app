@@ -1,5 +1,5 @@
 import { SESSION_DISTRIBUTION, SKILL_DEFINITIONS } from '../config/curriculum';
-import type { Clef, ExerciseFamily, SkillKey } from '../types';
+import type { Clef, ExerciseFamily, MelodyOptions, SkillKey } from '../types';
 
 function buildSkillEntries(
   enabledClefs: Clef[],
@@ -93,18 +93,20 @@ export class SessionPlanner {
     level,
     count,
     generator,
+    melodyOptions,
   }: {
     skillKey: SkillKey;
     clef: Clef;
     level: number;
     count: number;
     generator: any;
+    melodyOptions?: MelodyOptions;
   }) {
     const total = Math.max(1, count);
     const queue: any[] = [];
 
     for (let i = 0; i < total; i += 1) {
-      queue.push(generator.generate({ skillKey, clef, level }));
+      queue.push(generator.generate({ skillKey, clef, level, melodyOptions }));
     }
 
     return queue;

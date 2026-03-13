@@ -8,6 +8,7 @@ import type {
   Clef,
   EvaluationResult,
   Exercise,
+  MelodyOptions,
   ProgressRecord,
   SessionRecord,
   SessionSummary,
@@ -173,7 +174,7 @@ export class SessionService {
     return this.startSession('guided', queue);
   }
 
-  startCustomSession(input: { skillKey: SkillKey; clef: Clef; level: number; count: number }) {
+  startCustomSession(input: { skillKey: SkillKey; clef: Clef; level: number; count: number; melodyOptions?: MelodyOptions }) {
     const queue = this.planner.generateCustomSession({ ...input, generator: this.generator }) as Exercise[];
     return this.startSession('custom', queue);
   }
