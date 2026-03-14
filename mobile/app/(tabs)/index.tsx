@@ -62,6 +62,7 @@ export default function DashboardScreen() {
             router.push('/practice');
           }}
           disabled={loading.startGuided}
+          accessibilityRole="button"
         >
           {loading.startGuided ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>{t(locale, 'start_guided')}</Text>}
         </Pressable>

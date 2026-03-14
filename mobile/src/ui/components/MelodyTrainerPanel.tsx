@@ -215,10 +215,10 @@ function BpmControl({
     <View style={styles.bpmRow}>
       <Text style={styles.bpmLabel}>{t(locale, 'melody_bpm_label')}: {bpm}</Text>
       <View style={styles.bpmButtons}>
-        <Pressable style={styles.bpmBtn} onPress={() => onChangeBpm(Math.max(40, bpm - 4))}>
+        <Pressable style={styles.bpmBtn} onPress={() => onChangeBpm(Math.max(40, bpm - 4))} accessibilityRole="button" accessibilityLabel={t(locale, 'melody_bpm_decrease')}>
           <Text style={styles.bpmBtnText}>−</Text>
         </Pressable>
-        <Pressable style={styles.bpmBtn} onPress={() => onChangeBpm(Math.min(200, bpm + 4))}>
+        <Pressable style={styles.bpmBtn} onPress={() => onChangeBpm(Math.min(200, bpm + 4))} accessibilityRole="button" accessibilityLabel={t(locale, 'melody_bpm_increase')}>
           <Text style={styles.bpmBtnText}>+</Text>
         </Pressable>
       </View>
@@ -367,13 +367,15 @@ export function MelodyTrainerPanel({
           style={[styles.controlBtn, styles.regenerateBtn, isCapturing && styles.disabledButton]}
           onPress={onRegenerate}
           disabled={isCapturing}
+          accessibilityRole="button"
+          accessibilityLabel={t(locale, 'melody_regenerate')}
         >
           <Text style={styles.controlBtnText}>{t(locale, 'melody_regenerate')}</Text>
         </Pressable>
 
         {/* Play / Stop prompt */}
         {loadingPlay ? (
-          <Pressable style={[styles.controlBtn, styles.stopBtn]} onPress={onStop} disabled={loadingStop}>
+          <Pressable style={[styles.controlBtn, styles.stopBtn]} onPress={onStop} disabled={loadingStop} accessibilityRole="button" accessibilityLabel={t(locale, 'melody_stop')}>
             {loadingStop ? <ActivityIndicator color="#fff" /> : <Text style={styles.controlBtnText}>{t(locale, 'melody_stop')}</Text>}
           </Pressable>
         ) : (
@@ -381,6 +383,8 @@ export function MelodyTrainerPanel({
             style={[styles.controlBtn, styles.playBtn, isCapturing && styles.disabledButton]}
             onPress={onPlay}
             disabled={isCapturing}
+            accessibilityRole="button"
+            accessibilityLabel={t(locale, 'melody_play')}
           >
             <Text style={styles.controlBtnText}>{t(locale, 'melody_play')}</Text>
           </Pressable>
@@ -391,6 +395,8 @@ export function MelodyTrainerPanel({
           style={[styles.controlBtn, isCapturing ? styles.recordingBtn : styles.recordBtn, loadingPlay && styles.disabledButton]}
           onPress={isCapturing ? onStop : onRecord}
           disabled={loadingPlay}
+          accessibilityRole="button"
+          accessibilityLabel={isCapturing ? t(locale, 'melody_stop') : t(locale, 'melody_record')}
         >
           {isCapturing ? (
             <ActivityIndicator color="#fff" />

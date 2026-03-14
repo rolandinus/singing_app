@@ -171,6 +171,8 @@ export default function PracticeScreen() {
                 key={family}
                 style={[styles.chip, selectedFamily === family && styles.chipActive]}
                 onPress={() => setSelectedFamily(family)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedFamily === family }}
               >
                 <Text style={[styles.chipText, selectedFamily === family && styles.chipTextActive]}>
                   {t(locale, `family_${family}` as TranslationKey)}
@@ -186,6 +188,8 @@ export default function PracticeScreen() {
                 key={skill.key}
                 style={[styles.chip, selectedSkill === skill.key && styles.chipActive]}
                 onPress={() => setSelectedSkill(skill.key as SkillKey)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedSkill === skill.key }}
               >
                 <Text style={[styles.chipText, selectedSkill === skill.key && styles.chipTextActive]}>{skillLabel(locale, skill.key)}</Text>
               </Pressable>
@@ -195,7 +199,13 @@ export default function PracticeScreen() {
           <Text style={styles.label}>{t(locale, 'clef')}</Text>
           <View style={styles.chipsRow}>
             {settings.enabledClefs.map((clef) => (
-              <Pressable key={clef} style={[styles.chip, selectedClef === clef && styles.chipActive]} onPress={() => setSelectedClef(clef)}>
+              <Pressable
+                key={clef}
+                style={[styles.chip, selectedClef === clef && styles.chipActive]}
+                onPress={() => setSelectedClef(clef)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedClef === clef }}
+              >
                 <Text style={[styles.chipText, selectedClef === clef && styles.chipTextActive]}>{clefLabel(locale, clef)}</Text>
               </Pressable>
             ))}
@@ -236,6 +246,8 @@ export default function PracticeScreen() {
                       style={[styles.chip, selectedMelodyOptions.firstNoteMode === mode && styles.chipActive]}
                       onPress={() => setSelectedMelodyOptions({ firstNoteMode: mode })}
                       disabled={loading.startCustom}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: selectedMelodyOptions.firstNoteMode === mode }}
                     >
                       <Text style={[styles.chipText, selectedMelodyOptions.firstNoteMode === mode && styles.chipTextActive]}>
                         {t(locale, labelKey)}
@@ -261,6 +273,8 @@ export default function PracticeScreen() {
                           : [...current, step].sort((a, b) => a - b);
                         setSelectedMelodyOptions({ allowedIntervalSteps: next });
                       }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
                     >
                       <Text style={[styles.chipText, active && styles.chipTextActive]}>
                         {INTERVAL_LABELS[step] ?? String(step)}
@@ -275,7 +289,7 @@ export default function PracticeScreen() {
             </View>
           ) : null}
 
-          <Pressable style={[styles.primaryButton, loading.startCustom && styles.disabledButton]} onPress={() => void startCustom()} disabled={loading.startCustom}>
+          <Pressable style={[styles.primaryButton, loading.startCustom && styles.disabledButton]} onPress={() => void startCustom()} disabled={loading.startCustom} accessibilityRole="button">
             {loading.startCustom ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>{t(locale, 'start_custom')}</Text>}
           </Pressable>
         </Card>
@@ -342,7 +356,7 @@ export default function PracticeScreen() {
                   {(currentExercise.skillKey === 'interval_aural'
                     || currentExercise.skillKey === 'sing_note'
                     || currentExercise.skillKey === 'sing_interval') ? (
-                    <Pressable style={[styles.promptButton, loading.playPrompt && styles.disabledButton]} onPress={() => void playPrompt()} disabled={loading.playPrompt}>
+                    <Pressable style={[styles.promptButton, loading.playPrompt && styles.disabledButton]} onPress={() => void playPrompt()} disabled={loading.playPrompt} accessibilityRole="button">
                       {loading.playPrompt ? <ActivityIndicator color="#334155" /> : <Text style={styles.promptButtonText}>{t(locale, 'play_prompt')}</Text>}
                     </Pressable>
                   ) : null}
@@ -352,6 +366,7 @@ export default function PracticeScreen() {
                       style={[styles.captureButton, loading.captureSingingAttempt && styles.disabledButton]}
                       onPress={() => void captureSingingAttempt()}
                       disabled={loading.captureSingingAttempt}
+                      accessibilityRole="button"
                     >
                       {loading.captureSingingAttempt ? <ActivityIndicator color="#fff" /> : <Text style={styles.captureButtonText}>{t(locale, 'record_and_evaluate')}</Text>}
                     </Pressable>
@@ -394,6 +409,7 @@ export default function PracticeScreen() {
                         ]}
                         onPress={() => void submitChoice(key)}
                         disabled={Boolean(answerState.selectedChoice) || loading.submitChoice || loading.captureSingingAttempt}
+                        accessibilityRole="button"
                       >
                         <Text style={styles.choiceText}>{labelForChoice(currentExercise.skillKey, key, currentExercise.metadata)}</Text>
                       </Pressable>
@@ -411,6 +427,7 @@ export default function PracticeScreen() {
                 style={[styles.secondaryButton, (!canGoNext || loading.nextExercise) && styles.disabledButton]}
                 onPress={() => void goToNextExercise()}
                 disabled={!canGoNext || loading.nextExercise}
+                accessibilityRole="button"
               >
                 {loading.nextExercise ? <ActivityIndicator color="#334155" /> : <Text style={styles.secondaryButtonText}>{t(locale, 'next_exercise')}</Text>}
               </Pressable>
@@ -436,6 +453,8 @@ export default function PracticeScreen() {
                   setShowEndSessionConfirm(true);
                 }}
                 disabled={loading.endSession}
+                accessibilityRole="button"
+                accessibilityLabel={t(locale, 'end_session')}
               >
                 {loading.endSession ? <ActivityIndicator color="#be123c" /> : <Text style={styles.endLinkText}>{t(locale, 'end_session')}</Text>}
               </Pressable>
@@ -451,6 +470,7 @@ export default function PracticeScreen() {
                         logEndSessionDebug('end_session_cancelled');
                         setShowEndSessionConfirm(false);
                       }}
+                      accessibilityRole="button"
                     >
                       <Text style={styles.confirmCancelText}>{t(locale, 'cancel')}</Text>
                     </Pressable>
@@ -462,6 +482,7 @@ export default function PracticeScreen() {
                         void confirmEndSession();
                       }}
                       disabled={loading.endSession}
+                      accessibilityRole="button"
                     >
                       {loading.endSession ? (
                         <ActivityIndicator color="#fff" />
