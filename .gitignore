@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Expo / Metro
+.expo/
+.expo-shared/
+.expo-metro.log
+
+# Build and test artifacts
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Mobile automation output
+mobile/.maestro/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
