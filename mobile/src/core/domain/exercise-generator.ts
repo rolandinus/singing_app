@@ -97,6 +97,13 @@ function qualifiedIntervalLabel(intervalStep: number, firstMidi: number, secondM
   return INTERVAL_QUALITY_LABELS[semitoneDist] ?? INTERVAL_LABELS[intervalStep] ?? String(intervalStep);
 }
 
+function withIntervalDirection(intervalLabel: string, firstMidi: number, secondMidi: number): string {
+  if (secondMidi === firstMidi) return `${intervalLabel} auf gleicher Höhe`;
+  return secondMidi > firstMidi
+    ? `${intervalLabel} nach oben`
+    : `${intervalLabel} nach unten`;
+}
+
 function buildIntervalChoiceLabels(
   choices: string[],
   correctChoice: string,
@@ -299,7 +306,11 @@ export class ExerciseGenerator {
 
   private generateSingInterval(clef: Clef, level: number): Exercise {
     const pair = generateIntervalPair(clef, level);
-    const intervalLabel = qualifiedIntervalLabel(pair.intervalStep, pair.firstMidi, pair.secondMidi);
+    const intervalLabel = withIntervalDirection(
+      qualifiedIntervalLabel(pair.intervalStep, pair.firstMidi, pair.secondMidi),
+      pair.firstMidi,
+      pair.secondMidi,
+    );
 
     return {
       id: createExerciseId('sing_interval'),

@@ -422,6 +422,10 @@ export class SessionService {
       return this.applyEvaluation(exercise, fallbackEvaluation, lastCaptured);
     }
 
+    if (exercise.skillKey === 'sing_interval') {
+      await this.audioPromptPort.playNote(String(exercise.prompt.reference));
+    }
+
     const captured = await this.pitchCapturePort.capturePitchSample(
       Math.max(500, options.sampleDurationMs ?? 2200),
     );

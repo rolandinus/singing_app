@@ -129,6 +129,55 @@ describe('SessionService', () => {
     }
   });
 
+  it('plays the sing_interval reference note before capture', async () => {
+    const playedNotes: string[] = [];
+    let targetMidi = 60;
+
+    const service = new SessionService(
+      createMockStorage(),
+      {
+        async playNote(note) {
+          playedNotes.push(note);
+        },
+        async playReferenceWithTarget() {},
+        async playInterval() {},
+        async playMelody() {},
+        async stop() {},
+      },
+      {
+        async ensureMicrophonePermission() {},
+        async capturePitchSample() {
+          return {
+            detectedFrequency: midiToFrequency(targetMidi),
+            detectedMidi: targetMidi,
+            noteName: null,
+          };
+        },
+        async capturePitchContour() { return null; },
+        async stop() {},
+      },
+    );
+    await service.init();
+
+    const started = service.startCustomSession({
+      skillKey: 'sing_interval',
+      clef: 'treble',
+      level: 1,
+      count: 1,
+    });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+
+    const exercise = service.getCurrentExercise();
+    expect(exercise?.skillKey).toBe('sing_interval');
+    if (!exercise || exercise.skillKey !== 'sing_interval') return;
+
+    targetMidi = Number((exercise.expectedAnswer as { targetMidi: number }).targetMidi);
+    await service.captureSingingAttempt();
+
+    expect(playedNotes).toContain(String(exercise.prompt.reference));
+  });
+
   it('allows re-recording singing attempts after an incorrect result', async () => {
     const capturedContours: number[][] = [];
     let targetMidis: number[] = [];

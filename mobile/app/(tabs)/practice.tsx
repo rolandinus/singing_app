@@ -109,6 +109,7 @@ export default function PracticeScreen() {
       isOffTarget: false,
       correctionDirection: null,
     };
+  const lastAutoPlayedIntervalId = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (summary) {
@@ -120,6 +121,17 @@ export default function PracticeScreen() {
       router.push('/summary');
     }
   }, [summary]);
+
+  React.useEffect(() => {
+    if (!currentExercise || currentExercise.skillKey !== 'sing_interval') {
+      lastAutoPlayedIntervalId.current = null;
+      return;
+    }
+
+    if (lastAutoPlayedIntervalId.current === currentExercise.id) return;
+    lastAutoPlayedIntervalId.current = currentExercise.id;
+    void auditMelodyNote(String(currentExercise.prompt.reference));
+  }, [auditMelodyNote, currentExercise]);
 
   async function goToNextExercise() {
     await nextExercise();

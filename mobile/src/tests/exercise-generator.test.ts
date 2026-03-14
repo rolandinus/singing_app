@@ -32,6 +32,7 @@ describe('ExerciseGenerator', () => {
     expect(typeof (ex.metadata as any).intervalStep).toBe('number');
     expect(typeof (ex.metadata as any).intervalLabel).toBe('string');
     expect((ex.metadata as any).intervalLabel.length).toBeGreaterThan(0);
+    expect((ex.metadata as any).intervalLabel).toMatch(/nach oben|nach unten|auf gleicher Höhe/);
   });
 
   it('generates sing melody with note sequence and targets', () => {
