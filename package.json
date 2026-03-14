@@ -1,0 +1,22 @@
+{
+  "name": "singing-app-root",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Root automation tooling for singing_app",
+  "scripts": {
+    "android:sdk:setup": "./scripts/android-sdk-setup.sh",
+    "android:avd:create": "./scripts/android-avd-create.sh",
+    "android:emulator:start": "./scripts/android-emulator-start.sh",
+    "android:emulator:stop": "./scripts/android-emulator-stop.sh",
+    "android:test:mobile": "./scripts/android-mobile-maestro.sh",
+    "android:build:apk": "./scripts/android-build-debug-apk.sh",
+    "android:test:firebase:robo": "./scripts/android-firebase-robo.sh",
+    "android:test:firebase:robo:build": "npm run android:build:apk && npm run android:test:firebase:robo",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.2"
+  }
+}
