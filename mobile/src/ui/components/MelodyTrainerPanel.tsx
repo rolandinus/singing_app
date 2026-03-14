@@ -7,6 +7,7 @@ import type { MelodyNoteResult } from '../../core/services/session-service';
 import { t, type TranslationKey } from '../../core/i18n/translator';
 import type { Clef, Exercise, MelodyNote, NoteType } from '../../core/types';
 import { buildNoteNodes, buildStaffNodes } from '../../core/render/staff-builder';
+import { buildMelodyResultRenderNotes } from '../../core/utils/melody-result-notes';
 import { toReactNativeSvgTree, type SvgDescriptor } from '../../core/render/rn-svg-renderer';
 
 type Locale = 'de' | 'en';
@@ -74,9 +75,31 @@ function TappableStaff({
   overlayIndex?: number | null;
   overlayDuration?: NoteType;
   noteResults?: MelodyNoteResult[];
+  renderedNotes?: Array<{ note: string; duration: NoteType; slotIndex: number; correct: boolean }>;
   onTapNote?: (note: string, index: number) => void;
 }) {
-  const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null, durations);
+  const renderedPitchNotes = renderedNotes ?? notes.map((note, index) => ({
+    note,
+    duration: durations?.[index] ?? 'quarter',
+    slotIndex: index,
+    correct: true,
+  }));
+  const noteNodes = buildNoteNodes(
+    renderedPitchNotes.map((note) => note.note),
+    clef,
+    highlightIndex ?? null,
+    renderedPitchNotes.map((note) => note.duration),
+    {
+      layoutNoteCount: Math.max(notes.length, renderedPitchNotes.length),
+      slotIndices: renderedPitchNotes.map((note) => note.slotIndex),
+      noteStyles: renderedNotes
+        ? renderedPitchNotes.map((note) => ({
+          fill: note.correct ? '#047857' : '#dc2626',
+          stroke: note.correct ? '#047857' : '#dc2626',
+        }))
+        : undefined,
+    },
+  );
   const overlayNodes = overlayNote && overlayIndex !== null
     ? buildNoteNodes(
       [overlayNote],
@@ -115,15 +138,7 @@ function TappableStaff({
           const cx = NOTE_START_X + i * NOTE_SPACING;
           const cy = 8;
           const color = result.correct ? '#10b981' : '#f43f5e';
-          return (
-            <Circle
-              key={`result-${i}`}
-              cx={cx}
-              cy={cy}
-              r={5}
-              fill={color}
-            />
-          );
+          return <Circle key={`result-${i}`} cx={cx} cy={cy} r={5} fill={color} />;
         })}
       </Svg>
 
@@ -244,6 +259,7 @@ export function MelodyTrainerPanel({
   const isCapturing = loadingCapture;
   const isCountingIn = isCapturing && countInBeat !== null;
   const hasResult = noteResults.length > 0;
+  const renderedResultNotes = buildMelodyResultRenderNotes(noteResults, durations);
 
   return (
     <View style={styles.container}>
@@ -280,6 +296,7 @@ export function MelodyTrainerPanel({
             notes={notes}
             durations={durations}
             noteResults={noteResults}
+            renderedNotes={renderedResultNotes}
           />
           <View style={styles.noteResultsRow}>
             {noteResults.map((result, i) => (
