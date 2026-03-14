@@ -60,6 +60,9 @@ function TappableStaff({
   notes,
   durations,
   highlightIndex,
+  overlayNote,
+  overlayIndex,
+  overlayDuration,
   noteResults,
   onTapNote,
 }: {
@@ -67,12 +70,28 @@ function TappableStaff({
   notes: string[];
   durations?: NoteType[];
   highlightIndex?: number | null;
+  overlayNote?: string | null;
+  overlayIndex?: number | null;
+  overlayDuration?: NoteType;
   noteResults?: MelodyNoteResult[];
   onTapNote?: (note: string, index: number) => void;
 }) {
   const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null, durations);
+  const overlayNodes = overlayNote && overlayIndex !== null
+    ? buildNoteNodes(
+      [overlayNote],
+      clef,
+      null,
+      [overlayDuration ?? 'quarter'],
+      {
+        layoutNoteCount: Math.max(notes.length, overlayIndex + 1),
+        slotIndices: [overlayIndex],
+        noteStyles: [{ fill: '#dc2626', stroke: '#dc2626', rx: 8, ry: 6 }],
+      },
+    )
+    : [];
   const staffNodes = buildStaffNodes(clef);
-  const allNodes = [...staffNodes, ...noteNodes];
+  const allNodes = [...staffNodes, ...noteNodes, ...overlayNodes];
   const tree = toReactNativeSvgTree(allNodes);
 
   // Estimate the horizontal positions for each note for tap regions.
@@ -186,6 +205,8 @@ type Props = {
   countInBeat: number | null;
   noteResults: MelodyNoteResult[];
   singingNoteIndex: number | null;
+  liveDetectedNote?: string | null;
+  liveDetectedNoteIndex?: number | null;
   feedback: { text: string; isCorrect: boolean };
   loadingPlay: boolean;
   loadingCapture: boolean;
@@ -205,6 +226,8 @@ export function MelodyTrainerPanel({
   countInBeat,
   noteResults,
   singingNoteIndex,
+  liveDetectedNote,
+  liveDetectedNoteIndex,
   feedback,
   loadingPlay,
   loadingCapture,
@@ -239,6 +262,9 @@ export function MelodyTrainerPanel({
         notes={notes}
         durations={durations}
         highlightIndex={isCapturing && !isCountingIn ? singingNoteIndex : null}
+        overlayNote={liveDetectedNote}
+        overlayIndex={liveDetectedNoteIndex}
+        overlayDuration={liveDetectedNoteIndex !== null ? (durations[liveDetectedNoteIndex] ?? 'quarter') : 'quarter'}
         onTapNote={!isCapturing ? onTapNote : undefined}
       />
 

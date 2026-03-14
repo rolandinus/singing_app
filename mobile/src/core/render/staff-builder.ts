@@ -3,6 +3,19 @@ import type { NoteType } from '../types';
 import { ellipse, group, line, text } from './staff-model';
 import type { ModelNode } from './staff-model';
 
+type NoteRenderStyle = {
+  fill?: string;
+  stroke?: string;
+  rx?: number;
+  ry?: number;
+};
+
+type NoteRenderOptions = {
+  noteStyles?: Array<NoteRenderStyle | null | undefined>;
+  slotIndices?: number[];
+  layoutNoteCount?: number;
+};
+
 function yForScientific(scientific: string, clef: 'treble' | 'bass'): number {
   const anchor = clef === 'bass' ? 'D3' : 'B4';
   const order = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
@@ -49,25 +62,29 @@ export function buildNoteNodes(
   clef: 'treble' | 'bass',
   highlightIndex: number | null = null,
   durations?: NoteType[],
+  options?: NoteRenderOptions,
 ): ModelNode[] {
   if (!notes.length) return [];
   const startX = STAFF_MARGIN_LEFT + 110;
   const availableWidth = SVG_STAFF_WIDTH - startX - STAFF_MARGIN_LEFT;
-  const step = notes.length > 1 ? Math.min(availableWidth / (notes.length - 1), 180) : 0;
+  const layoutNoteCount = Math.max(notes.length, options?.layoutNoteCount ?? notes.length);
+  const step = layoutNoteCount > 1 ? Math.min(availableWidth / (layoutNoteCount - 1), 180) : 0;
   const stemHeight = LINE_SPACING * 3;
 
   return notes.map((scientific, index) => {
-    const x = startX + index * step;
+    const slotIndex = options?.slotIndices?.[index] ?? index;
+    const x = startX + slotIndex * step;
     const y = yForScientific(scientific, clef);
     const isHighlighted = highlightIndex !== null && index === highlightIndex;
     const duration = durations?.[index] ?? 'quarter';
     const isHalf = duration === 'half';
+    const style = options?.noteStyles?.[index] ?? null;
 
-    const fillColor = isHighlighted ? '#2563eb' : '#0f172a';
-    const strokeColor = isHighlighted ? '#2563eb' : '#0f172a';
+    const fillColor = style?.fill ?? (isHighlighted ? '#2563eb' : '#0f172a');
+    const strokeColor = style?.stroke ?? (isHighlighted ? '#2563eb' : '#0f172a');
 
-    const rx = isHighlighted ? 8 : 6.5;
-    const ry = isHighlighted ? 6 : 5;
+    const rx = style?.rx ?? (isHighlighted ? 8 : 6.5);
+    const ry = style?.ry ?? (isHighlighted ? 6 : 5);
 
     // Half note: hollow notehead (fill = white/transparent) + upward stem.
     // Quarter note: filled notehead, no stem.

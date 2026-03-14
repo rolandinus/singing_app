@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { INTERVAL_LABELS, SKILL_DEFINITIONS } from '../../src/core/config/curriculum';
 import { clefLabel, localeTag, modeLabel, skillLabel, t, type TranslationKey } from '../../src/core/i18n/translator';
 import type { Exercise, ExerciseFamily, MelodyFirstNoteMode, SkillKey } from '../../src/core/types';
+import { buildLiveSingingFeedback } from '../../src/core/utils/live-singing-feedback';
 import { useAppStore } from '../../src/state/use-app-store';
 import { Card } from '../../src/ui/components/Card';
 import { HearingPromptSvg } from '../../src/ui/components/HearingPromptSvg';
@@ -75,6 +76,20 @@ export default function PracticeScreen() {
   const endSession = useAppStore((s) => s.endSession);
   const locale = settings.locale;
   const familySkills = SKILL_DEFINITIONS.filter((s) => s.family === selectedFamily);
+  const promptNotes = promptToNotes(currentExercise);
+  const liveSingingFeedback = currentExercise && (
+    currentExercise.skillKey === 'sing_note'
+    || currentExercise.skillKey === 'sing_interval'
+    || currentExercise.skillKey === 'sing_melody'
+  )
+    ? buildLiveSingingFeedback({
+      skillKey: currentExercise.skillKey,
+      isCapturing: loading.captureSingingAttempt,
+      promptNotes,
+      singingNoteIndex,
+      frequency: pitchDebug.frequency,
+    })
+    : { detectedNote: null, targetIndex: null, isOffTarget: false };
 
   React.useEffect(() => {
     if (summary) {
@@ -270,6 +285,8 @@ export default function PracticeScreen() {
                   countInBeat={melodyCountInBeat}
                   noteResults={melodyNoteResults}
                   singingNoteIndex={singingNoteIndex}
+                  liveDetectedNote={liveSingingFeedback.isOffTarget ? liveSingingFeedback.detectedNote : null}
+                  liveDetectedNoteIndex={liveSingingFeedback.isOffTarget ? liveSingingFeedback.targetIndex : null}
                   feedback={feedback}
                   loadingPlay={loading.playPrompt}
                   loadingCapture={loading.captureSingingAttempt}
@@ -295,8 +312,10 @@ export default function PracticeScreen() {
                   ) : currentExercise.skillKey !== 'rhythm_id' ? (
                     <StaffSvg
                       clef={currentExercise.clef}
-                      notes={promptToNotes(currentExercise)}
+                      notes={promptNotes}
                       highlightIndex={loading.captureSingingAttempt ? singingNoteIndex : null}
+                      overlayNote={liveSingingFeedback.isOffTarget ? liveSingingFeedback.detectedNote : null}
+                      overlayIndex={liveSingingFeedback.isOffTarget ? liveSingingFeedback.targetIndex : null}
                     />
                   ) : (
                     <Text style={styles.rhythm}>{String(currentExercise.prompt.display)}</Text>

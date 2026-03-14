@@ -26,13 +26,32 @@ export function StaffSvg({
   clef = 'treble',
   notes = [],
   highlightIndex,
+  overlayNote,
+  overlayIndex,
+  overlayDuration,
 }: {
   clef?: 'treble' | 'bass';
   notes?: string[];
   highlightIndex?: number | null;
+  overlayNote?: string | null;
+  overlayIndex?: number | null;
+  overlayDuration?: 'quarter' | 'half';
 }) {
   const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null);
-  const nodes = [...buildStaffNodes(clef), ...noteNodes];
+  const overlayNodes = overlayNote && overlayIndex !== null
+    ? buildNoteNodes(
+      [overlayNote],
+      clef,
+      null,
+      [overlayDuration ?? 'quarter'],
+      {
+        layoutNoteCount: Math.max(notes.length, overlayIndex + 1),
+        slotIndices: [overlayIndex],
+        noteStyles: [{ fill: '#dc2626', stroke: '#dc2626', rx: 8, ry: 6 }],
+      },
+    )
+    : [];
+  const nodes = [...buildStaffNodes(clef), ...noteNodes, ...overlayNodes];
   const tree = toReactNativeSvgTree(nodes);
 
   return (
