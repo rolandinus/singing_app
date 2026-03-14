@@ -1,19 +1,15 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useThemeColors } from '../hooks/use-theme-colors';
 
 export function Screen({ children }: { children: React.ReactNode }) {
+  const colors = useThemeColors();
   return (
-    <SafeAreaView style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-        <View style={styles.inner}>{children}</View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+        <View style={{ gap: 12 }}>{children}</View>
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#f8fafc' },
-  content: { padding: 16 },
-  inner: { gap: 12 },
-});

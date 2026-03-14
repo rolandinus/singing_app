@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { INTERVAL_LABELS, SKILL_DEFINITIONS } from '../../src/core/config/curriculum';
 import { clefLabel, localeTag, modeLabel, skillLabel, t, type TranslationKey } from '../../src/core/i18n/translator';
 import type { Exercise, ExerciseFamily, MelodyFirstNoteMode, SkillKey } from '../../src/core/types';
@@ -12,6 +12,7 @@ import { MelodyTrainerPanel } from '../../src/ui/components/MelodyTrainerPanel';
 import { Screen } from '../../src/ui/components/Screen';
 import { StaffSvg } from '../../src/ui/components/StaffSvg';
 import { Stepper } from '../../src/ui/components/Stepper';
+import { useThemeColors } from '../../src/ui/hooks/use-theme-colors';
 
 const CUSTOM_FAMILIES: ExerciseFamily[] = ['visual', 'aural', 'singing'];
 
@@ -46,6 +47,7 @@ function promptToNotes(exercise: Exercise | null): string[] {
 }
 
 export default function PracticeScreen() {
+  const colors = useThemeColors();
   const [showEndSessionConfirm, setShowEndSessionConfirm] = React.useState(false);
   const settings = useAppStore((s) => s.settings);
   const selectedFamily = useAppStore((s) => s.selectedFamily);
@@ -162,76 +164,98 @@ export default function PracticeScreen() {
     <Screen>
       {!sessionActive ? (
         <Card>
-          <Text style={styles.sectionTitle}>{t(locale, 'custom_session')}</Text>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>{t(locale, 'custom_session')}</Text>
 
-          <Text style={styles.label}>{t(locale, 'family')}</Text>
-          <View style={styles.chipsRow}>
+          <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>{t(locale, 'family')}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {CUSTOM_FAMILIES.map((family) => (
               <Pressable
                 key={family}
-                style={[styles.chip, selectedFamily === family && styles.chipActive]}
+                style={[
+                  { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 999, paddingHorizontal: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+                  selectedFamily === family && { backgroundColor: colors.toggleActiveBg, borderColor: colors.toggleActiveBorder },
+                ]}
                 onPress={() => setSelectedFamily(family)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: selectedFamily === family }}
               >
-                <Text style={[styles.chipText, selectedFamily === family && styles.chipTextActive]}>
+                <Text style={[
+                  { color: colors.textSecondary },
+                  selectedFamily === family && { color: colors.primaryStrong, fontWeight: '700' },
+                ]}>
                   {t(locale, `family_${family}` as TranslationKey)}
                 </Text>
               </Pressable>
             ))}
           </View>
 
-          <Text style={styles.label}>{t(locale, 'skill')}</Text>
-          <View style={styles.chipsRow}>
+          <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>{t(locale, 'skill')}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {familySkills.map((skill) => (
               <Pressable
                 key={skill.key}
-                style={[styles.chip, selectedSkill === skill.key && styles.chipActive]}
+                style={[
+                  { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 999, paddingHorizontal: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+                  selectedSkill === skill.key && { backgroundColor: colors.toggleActiveBg, borderColor: colors.toggleActiveBorder },
+                ]}
                 onPress={() => setSelectedSkill(skill.key as SkillKey)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: selectedSkill === skill.key }}
               >
-                <Text style={[styles.chipText, selectedSkill === skill.key && styles.chipTextActive]}>{skillLabel(locale, skill.key)}</Text>
+                <Text style={[
+                  { color: colors.textSecondary },
+                  selectedSkill === skill.key && { color: colors.primaryStrong, fontWeight: '700' },
+                ]}>
+                  {skillLabel(locale, skill.key)}
+                </Text>
               </Pressable>
             ))}
           </View>
 
-          <Text style={styles.label}>{t(locale, 'clef')}</Text>
-          <View style={styles.chipsRow}>
+          <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>{t(locale, 'clef')}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {settings.enabledClefs.map((clef) => (
               <Pressable
                 key={clef}
-                style={[styles.chip, selectedClef === clef && styles.chipActive]}
+                style={[
+                  { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 999, paddingHorizontal: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+                  selectedClef === clef && { backgroundColor: colors.toggleActiveBg, borderColor: colors.toggleActiveBorder },
+                ]}
                 onPress={() => setSelectedClef(clef)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: selectedClef === clef }}
               >
-                <Text style={[styles.chipText, selectedClef === clef && styles.chipTextActive]}>{clefLabel(locale, clef)}</Text>
+                <Text style={[
+                  { color: colors.textSecondary },
+                  selectedClef === clef && { color: colors.primaryStrong, fontWeight: '700' },
+                ]}>
+                  {clefLabel(locale, clef)}
+                </Text>
               </Pressable>
             ))}
           </View>
 
-          <View style={styles.row}>
-            <View style={styles.half}>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1, gap: 6 }}>
               <Stepper label={t(locale, 'level')} value={selectedLevel} min={1} max={5} onChange={setSelectedLevel} disabled={loading.startCustom} />
             </View>
-            <View style={styles.half}>
+            <View style={{ flex: 1, gap: 6 }}>
               <Stepper label={t(locale, 'count')} value={selectedCount} min={1} max={50} onChange={setSelectedCount} disabled={loading.startCustom} />
             </View>
           </View>
 
-          <View style={styles.levelDetailPanel}>
-            <Text style={styles.levelDetailText}>
+          <View style={{ borderWidth: 1, borderColor: colors.borderLight, borderRadius: 8, backgroundColor: colors.surfaceNeutral, padding: 10 }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 18 }}>
               {t(locale, `${SKILL_LEVEL_DETAIL_PREFIX[selectedSkill]}_${selectedLevel}` as TranslationKey)}
             </Text>
           </View>
 
           {selectedSkill === 'sing_melody' ? (
-            <View style={styles.melodyOptionsPanel}>
-              <Text style={styles.melodyOptionsTitle}>{t(locale, 'melody_options_title')}</Text>
+            <View style={{ borderWidth: 1, borderColor: colors.borderBlue, borderRadius: 10, backgroundColor: colors.surfaceMelodyOptions, padding: 12, gap: 8 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.accent }}>{t(locale, 'melody_options_title')}</Text>
 
-              <Text style={styles.label}>{t(locale, 'melody_first_note')}</Text>
-              <View style={styles.chipsRow}>
+              <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>{t(locale, 'melody_first_note')}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {clefFirstNoteModes.map((mode) => {
                   const labelKey: TranslationKey = mode === 'random'
                     ? 'melody_first_note_random'
@@ -240,16 +264,20 @@ export default function PracticeScreen() {
                       : mode === 'C6'
                         ? 'melody_first_note_c6'
                         : 'melody_first_note_c4';
+                  const active = selectedMelodyOptions.firstNoteMode === mode;
                   return (
                     <Pressable
                       key={mode}
-                      style={[styles.chip, selectedMelodyOptions.firstNoteMode === mode && styles.chipActive]}
+                      style={[
+                        { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 999, paddingHorizontal: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+                        active && { backgroundColor: colors.toggleActiveBg, borderColor: colors.toggleActiveBorder },
+                      ]}
                       onPress={() => setSelectedMelodyOptions({ firstNoteMode: mode })}
                       disabled={loading.startCustom}
                       accessibilityRole="button"
-                      accessibilityState={{ selected: selectedMelodyOptions.firstNoteMode === mode }}
+                      accessibilityState={{ selected: active }}
                     >
-                      <Text style={[styles.chipText, selectedMelodyOptions.firstNoteMode === mode && styles.chipTextActive]}>
+                      <Text style={[{ color: colors.textSecondary }, active && { color: colors.primaryStrong, fontWeight: '700' }]}>
                         {t(locale, labelKey)}
                       </Text>
                     </Pressable>
@@ -257,14 +285,17 @@ export default function PracticeScreen() {
                 })}
               </View>
 
-              <Text style={styles.label}>{t(locale, 'melody_intervals')}</Text>
-              <View style={styles.chipsRow}>
+              <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>{t(locale, 'melody_intervals')}</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {([1, 2, 3, 4, 5, 6, 7, 8] as number[]).map((step) => {
                   const active = selectedMelodyOptions.allowedIntervalSteps.includes(step);
                   return (
                     <Pressable
                       key={step}
-                      style={[styles.chip, active && styles.chipActive]}
+                      style={[
+                        { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 999, paddingHorizontal: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+                        active && { backgroundColor: colors.toggleActiveBg, borderColor: colors.toggleActiveBorder },
+                      ]}
                       disabled={loading.startCustom}
                       onPress={() => {
                         const current = selectedMelodyOptions.allowedIntervalSteps;
@@ -276,7 +307,7 @@ export default function PracticeScreen() {
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
                     >
-                      <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                      <Text style={[{ color: colors.textSecondary }, active && { color: colors.primaryStrong, fontWeight: '700' }]}>
                         {INTERVAL_LABELS[step] ?? String(step)}
                       </Text>
                     </Pressable>
@@ -284,25 +315,35 @@ export default function PracticeScreen() {
                 })}
               </View>
               {selectedMelodyOptions.allowedIntervalSteps.length === 0 ? (
-                <Text style={styles.melodyOptionsError}>{t(locale, 'melody_intervals_empty_error')}</Text>
+                <Text style={{ fontSize: 12, color: colors.danger, fontWeight: '600' }}>{t(locale, 'melody_intervals_empty_error')}</Text>
               ) : null}
             </View>
           ) : null}
 
-          <Pressable style={[styles.primaryButton, loading.startCustom && styles.disabledButton]} onPress={() => void startCustom()} disabled={loading.startCustom} accessibilityRole="button">
-            {loading.startCustom ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>{t(locale, 'start_custom')}</Text>}
+          <Pressable
+            style={[
+              { backgroundColor: '#059669', minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+              loading.startCustom && { opacity: 0.45 },
+            ]}
+            onPress={() => void startCustom()}
+            disabled={loading.startCustom}
+            accessibilityRole="button"
+          >
+            {loading.startCustom
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={{ color: '#fff', fontWeight: '700' }}>{t(locale, 'start_custom')}</Text>}
           </Pressable>
         </Card>
       ) : null}
 
       {sessionActive ? (
         <Card>
-          <Text style={styles.sectionTitle}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>
             {t(locale, 'session_label')}: {`${modeLabel(locale, sessionMeta.mode)} • ${t(locale, 'exercise_label')} ${sessionMeta.index + 1}/${sessionMeta.total}`}
           </Text>
 
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+          <View style={{ height: 8, borderRadius: 99, backgroundColor: colors.masteryTrack, overflow: 'hidden' }}>
+            <View style={{ height: 8, backgroundColor: '#10b981', width: `${progressPercent}%` }} />
           </View>
 
           {currentExercise ? (
@@ -332,11 +373,13 @@ export default function PracticeScreen() {
                 />
               ) : (
                 <>
-                  <Text style={styles.prompt}>{buildPrompt(currentExercise, locale)}</Text>
-                  {subPrompt ? <Text style={styles.subPrompt}>{subPrompt}</Text> : null}
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: colors.textPrimary }}>{buildPrompt(currentExercise, locale)}</Text>
+                  {subPrompt ? <Text style={{ fontSize: 13, color: colors.textSecondary }}>{subPrompt}</Text> : null}
 
                   {currentExercise.skillKey === 'sing_interval' && currentExercise.metadata.intervalLabel ? (
-                    <Text style={styles.intervalName}>{String(currentExercise.metadata.intervalLabel)}</Text>
+                    <Text style={{ fontSize: 18, fontWeight: '700', color: colors.primary, textAlign: 'center', marginVertical: 4 }}>
+                      {String(currentExercise.metadata.intervalLabel)}
+                    </Text>
                   ) : null}
 
                   {currentExercise.skillKey === 'interval_aural' ? (
@@ -350,48 +393,65 @@ export default function PracticeScreen() {
                       overlayIndex={liveSingingFeedback.isOffTarget ? liveSingingFeedback.targetIndex : null}
                     />
                   ) : (
-                    <Text style={styles.rhythm}>{String(currentExercise.prompt.display)}</Text>
+                    <Text style={{ fontSize: 28, textAlign: 'center', color: colors.textSecondary, marginVertical: 10 }}>
+                      {String(currentExercise.prompt.display)}
+                    </Text>
                   )}
 
                   {(currentExercise.skillKey === 'interval_aural'
                     || currentExercise.skillKey === 'sing_note'
                     || currentExercise.skillKey === 'sing_interval') ? (
-                    <Pressable style={[styles.promptButton, loading.playPrompt && styles.disabledButton]} onPress={() => void playPrompt()} disabled={loading.playPrompt} accessibilityRole="button">
-                      {loading.playPrompt ? <ActivityIndicator color="#334155" /> : <Text style={styles.promptButtonText}>{t(locale, 'play_prompt')}</Text>}
+                    <Pressable
+                      style={[
+                        { alignSelf: 'flex-start', borderWidth: 1, borderColor: colors.borderLight, borderRadius: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: colors.surface },
+                        loading.playPrompt && { opacity: 0.45 },
+                      ]}
+                      onPress={() => void playPrompt()}
+                      disabled={loading.playPrompt}
+                      accessibilityRole="button"
+                    >
+                      {loading.playPrompt
+                        ? <ActivityIndicator color={colors.textSecondary} />
+                        : <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>{t(locale, 'play_prompt')}</Text>}
                     </Pressable>
                   ) : null}
 
                   {currentExercise.family === 'singing' ? (
                     <Pressable
-                      style={[styles.captureButton, loading.captureSingingAttempt && styles.disabledButton]}
+                      style={[
+                        { alignSelf: 'flex-start', borderRadius: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: colors.amber },
+                        loading.captureSingingAttempt && { opacity: 0.45 },
+                      ]}
                       onPress={() => void captureSingingAttempt()}
                       disabled={loading.captureSingingAttempt}
                       accessibilityRole="button"
                     >
-                      {loading.captureSingingAttempt ? <ActivityIndicator color="#fff" /> : <Text style={styles.captureButtonText}>{t(locale, 'record_and_evaluate')}</Text>}
+                      {loading.captureSingingAttempt
+                        ? <ActivityIndicator color="#fff" />
+                        : <Text style={{ color: '#fff', fontWeight: '700' }}>{t(locale, 'record_and_evaluate')}</Text>}
                     </Pressable>
                   ) : null}
 
                   {currentExercise.family === 'singing' ? (
-                    <View style={styles.debugPanel}>
-                      <Text style={styles.debugTitle}>{t(locale, 'mic_debug_title')}</Text>
-                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_phase')}: {pitchDebug.phase}</Text>
-                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_duration_ms')}: {formatDebugInteger(locale, pitchDebug.durationMillis)}</Text>
-                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_metering_db')}: {formatDebugDecimal(locale, pitchDebug.metering)}</Text>
-                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_frequency_hz')}: {formatDebugDecimal(locale, pitchDebug.frequency)}</Text>
-                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_timeline_points')}: {formatDebugInteger(locale, pitchDebug.timelinePoints)}</Text>
-                      <Text style={styles.debugLine}>{t(locale, 'mic_debug_updated')}: {formatDebugTimestamp(locale, pitchDebug.timestampMs)}</Text>
+                    <View style={{ borderWidth: 1, borderColor: colors.borderLight, borderRadius: 8, backgroundColor: colors.surfaceNeutral, padding: 10, gap: 3 }}>
+                      <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 13 }}>{t(locale, 'mic_debug_title')}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t(locale, 'mic_debug_phase')}: {pitchDebug.phase}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t(locale, 'mic_debug_duration_ms')}: {formatDebugInteger(locale, pitchDebug.durationMillis)}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t(locale, 'mic_debug_metering_db')}: {formatDebugDecimal(locale, pitchDebug.metering)}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t(locale, 'mic_debug_frequency_hz')}: {formatDebugDecimal(locale, pitchDebug.frequency)}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t(locale, 'mic_debug_timeline_points')}: {formatDebugInteger(locale, pitchDebug.timelinePoints)}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t(locale, 'mic_debug_updated')}: {formatDebugTimestamp(locale, pitchDebug.timestampMs)}</Text>
                     </View>
                   ) : null}
 
                   {feedback.text ? (
-                    <Text style={[styles.feedback, feedback.isCorrect ? styles.feedbackOk : styles.feedbackBad]}>{feedback.text}</Text>
+                    <Text style={{ fontWeight: '700', color: feedback.isCorrect ? colors.success : colors.danger }}>{feedback.text}</Text>
                   ) : null}
                 </>
               )}
 
               {currentExercise.choices.length > 0 ? (
-                <View style={styles.choicesRow}>
+                <View style={{ gap: 8 }}>
                   {currentExercise.choices.map((choice) => {
                     const key = String(choice);
                     const selected = answerState.selectedChoice === key;
@@ -402,16 +462,18 @@ export default function PracticeScreen() {
                       <Pressable
                         key={key}
                         style={[
-                          styles.choice,
-                          selected && styles.choiceSelected,
-                          isCorrectChoice && styles.choiceCorrect,
-                          isWrongSelected && styles.choiceWrong,
+                          { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: colors.surfaceNeutral },
+                          selected && { borderColor: colors.primary },
+                          isCorrectChoice && { borderColor: '#10b981', backgroundColor: colors.choiceCorrectBg },
+                          isWrongSelected && { borderColor: '#f43f5e', backgroundColor: colors.choiceWrongBg },
                         ]}
                         onPress={() => void submitChoice(key)}
                         disabled={Boolean(answerState.selectedChoice) || loading.submitChoice || loading.captureSingingAttempt}
                         accessibilityRole="button"
                       >
-                        <Text style={styles.choiceText}>{labelForChoice(currentExercise.skillKey, key, currentExercise.metadata)}</Text>
+                        <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>
+                          {labelForChoice(currentExercise.skillKey, key, currentExercise.metadata)}
+                        </Text>
                       </Pressable>
                     );
                   })}
@@ -420,20 +482,25 @@ export default function PracticeScreen() {
 
               {/* Feedback for non-melody exercises (melody shows its own feedback in MelodyTrainerPanel) */}
               {currentExercise.skillKey !== 'sing_melody' && feedback.text ? (
-                <Text style={[styles.feedback, feedback.isCorrect ? styles.feedbackOk : styles.feedbackBad]}>{feedback.text}</Text>
+                <Text style={{ fontWeight: '700', color: feedback.isCorrect ? colors.success : colors.danger }}>{feedback.text}</Text>
               ) : null}
 
               <Pressable
-                style={[styles.secondaryButton, (!canGoNext || loading.nextExercise) && styles.disabledButton]}
+                style={[
+                  { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 8, alignItems: 'center', justifyContent: 'center', minHeight: 44, backgroundColor: colors.surface },
+                  (!canGoNext || loading.nextExercise) && { opacity: 0.45 },
+                ]}
                 onPress={() => void goToNextExercise()}
                 disabled={!canGoNext || loading.nextExercise}
                 accessibilityRole="button"
               >
-                {loading.nextExercise ? <ActivityIndicator color="#334155" /> : <Text style={styles.secondaryButtonText}>{t(locale, 'next_exercise')}</Text>}
+                {loading.nextExercise
+                  ? <ActivityIndicator color={colors.textSecondary} />
+                  : <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>{t(locale, 'next_exercise')}</Text>}
               </Pressable>
 
               <Pressable
-                style={styles.endLinkButton}
+                style={{ minHeight: 44, alignItems: 'center', justifyContent: 'center' }}
                 onPress={() => {
                   logEndSessionDebug('end_session_button_pressed', {
                     loading: loading.endSession,
@@ -456,26 +523,31 @@ export default function PracticeScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t(locale, 'end_session')}
               >
-                {loading.endSession ? <ActivityIndicator color="#be123c" /> : <Text style={styles.endLinkText}>{t(locale, 'end_session')}</Text>}
+                {loading.endSession
+                  ? <ActivityIndicator color={colors.danger} />
+                  : <Text style={{ color: colors.danger, fontWeight: '600' }}>{t(locale, 'end_session')}</Text>}
               </Pressable>
 
               {showEndSessionConfirm ? (
-                <View style={styles.confirmPanel}>
-                  <Text style={styles.confirmTitle}>{t(locale, 'confirm_end_title')}</Text>
-                  <Text style={styles.confirmBody}>{t(locale, 'confirm_end_body')}</Text>
-                  <View style={styles.confirmActions}>
+                <View style={{ marginTop: 8, borderWidth: 1, borderColor: colors.borderDanger, backgroundColor: colors.surfaceDanger, borderRadius: 10, padding: 12, gap: 10 }}>
+                  <Text style={{ color: '#881337', fontWeight: '700', fontSize: 15 }}>{t(locale, 'confirm_end_title')}</Text>
+                  <Text style={{ color: '#9f1239', fontSize: 13 }}>{t(locale, 'confirm_end_body')}</Text>
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
                     <Pressable
-                      style={[styles.confirmButton, styles.confirmCancelButton]}
+                      style={{ flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, borderWidth: 1, borderColor: '#fda4af', backgroundColor: colors.surface }}
                       onPress={() => {
                         logEndSessionDebug('end_session_cancelled');
                         setShowEndSessionConfirm(false);
                       }}
                       accessibilityRole="button"
                     >
-                      <Text style={styles.confirmCancelText}>{t(locale, 'cancel')}</Text>
+                      <Text style={{ color: '#9f1239', fontWeight: '600' }}>{t(locale, 'cancel')}</Text>
                     </Pressable>
                     <Pressable
-                      style={[styles.confirmButton, styles.confirmDangerButton, loading.endSession && styles.disabledButton]}
+                      style={[
+                        { flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, backgroundColor: '#be123c' },
+                        loading.endSession && { opacity: 0.45 },
+                      ]}
                       onPress={() => {
                         logEndSessionDebug('end_session_alert_confirmed');
                         setShowEndSessionConfirm(false);
@@ -487,7 +559,7 @@ export default function PracticeScreen() {
                       {loading.endSession ? (
                         <ActivityIndicator color="#fff" />
                       ) : (
-                        <Text style={styles.confirmDangerText}>{t(locale, 'end_now')}</Text>
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>{t(locale, 'end_now')}</Text>
                       )}
                     </Pressable>
                   </View>
@@ -495,7 +567,7 @@ export default function PracticeScreen() {
               ) : null}
             </>
           ) : (
-            <Text style={styles.muted}>{t(locale, 'start_session_above')}</Text>
+            <Text style={{ color: colors.textMuted }}>{t(locale, 'start_session_above')}</Text>
           )}
         </Card>
       ) : null}
@@ -552,59 +624,3 @@ function formatDebugTimestamp(locale: 'de' | 'en', timestampMs: number | null): 
     hour12: false,
   });
 }
-
-const styles = StyleSheet.create({
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
-  label: { fontSize: 13, color: '#64748b', fontWeight: '600' },
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 999, paddingHorizontal: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  chipActive: { backgroundColor: '#dbeafe', borderColor: '#93c5fd' },
-  chipText: { color: '#334155' },
-  chipTextActive: { color: '#1d4ed8', fontWeight: '700' },
-  row: { flexDirection: 'row', gap: 10 },
-  half: { flex: 1, gap: 6 },
-  primaryButton: { backgroundColor: '#059669', minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  primaryButtonText: { color: '#fff', fontWeight: '700' },
-  progressTrack: { height: 8, borderRadius: 99, backgroundColor: '#e2e8f0', overflow: 'hidden' },
-  progressFill: { height: 8, backgroundColor: '#10b981' },
-  prompt: { fontSize: 16, fontWeight: '600', color: '#0f172a' },
-  subPrompt: { fontSize: 13, color: '#475569' },
-  intervalName: { fontSize: 18, fontWeight: '700', color: '#2563eb', textAlign: 'center', marginVertical: 4 },
-  rhythm: { fontSize: 28, textAlign: 'center', color: '#334155', marginVertical: 10 },
-  promptButton: { alignSelf: 'flex-start', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: '#fff' },
-  promptButtonText: { color: '#334155', fontWeight: '600' },
-  captureButton: { alignSelf: 'flex-start', borderRadius: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: '#f59e0b' },
-  captureButtonText: { color: '#fff', fontWeight: '700' },
-  debugPanel: { borderWidth: 1, borderColor: '#d1d5db', borderRadius: 8, backgroundColor: '#f8fafc', padding: 10, gap: 3 },
-  debugTitle: { color: '#0f172a', fontWeight: '700', fontSize: 13 },
-  debugLine: { color: '#334155', fontSize: 12 },
-  choicesRow: { gap: 8 },
-  choice: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: '#f8fafc' },
-  choiceSelected: { borderColor: '#60a5fa' },
-  choiceCorrect: { borderColor: '#10b981', backgroundColor: '#ecfdf5' },
-  choiceWrong: { borderColor: '#f43f5e', backgroundColor: '#fff1f2' },
-  choiceText: { color: '#1e293b', fontWeight: '600' },
-  feedback: { fontWeight: '700' },
-  feedbackOk: { color: '#047857' },
-  feedbackBad: { color: '#be123c' },
-  confirmPanel: { marginTop: 8, borderWidth: 1, borderColor: '#fecdd3', backgroundColor: '#fff1f2', borderRadius: 10, padding: 12, gap: 10 },
-  confirmTitle: { color: '#881337', fontWeight: '700', fontSize: 15 },
-  confirmBody: { color: '#9f1239', fontSize: 13 },
-  confirmActions: { flexDirection: 'row', gap: 8 },
-  confirmButton: { flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
-  confirmCancelButton: { borderWidth: 1, borderColor: '#fda4af', backgroundColor: '#fff' },
-  confirmDangerButton: { backgroundColor: '#be123c' },
-  confirmCancelText: { color: '#9f1239', fontWeight: '600' },
-  confirmDangerText: { color: '#fff', fontWeight: '700' },
-  secondaryButton: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, alignItems: 'center', justifyContent: 'center', minHeight: 44, backgroundColor: '#fff' },
-  endLinkButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  endLinkText: { color: '#be123c', fontWeight: '600' },
-  disabledButton: { opacity: 0.45 },
-  secondaryButtonText: { color: '#334155', fontWeight: '600' },
-  muted: { color: '#64748b' },
-  levelDetailPanel: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, backgroundColor: '#f8fafc', padding: 10 },
-  levelDetailText: { color: '#475569', fontSize: 13, lineHeight: 18 },
-  melodyOptionsPanel: { borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, backgroundColor: '#eff6ff', padding: 12, gap: 8 },
-  melodyOptionsTitle: { fontSize: 14, fontWeight: '700', color: '#1e40af' },
-  melodyOptionsError: { fontSize: 12, color: '#be123c', fontWeight: '600' },
-});

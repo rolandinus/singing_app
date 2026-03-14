@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Path, Text as SvgText } from 'react-native-svg';
 import { STAFF_MARGIN_LEFT, STAFF_MARGIN_TOP, LINE_SPACING, SVG_STAFF_HEIGHT, SVG_STAFF_WIDTH } from '../../core/config/constants';
 import { COUNT_IN_BEATS } from '../../core/services/session-service';
@@ -9,6 +9,7 @@ import type { Clef, Exercise, MelodyNote, NoteType } from '../../core/types';
 import { buildNoteNodes, buildStaffNodes } from '../../core/render/staff-builder';
 import { buildMelodyResultRenderNotes } from '../../core/utils/melody-result-notes';
 import { toReactNativeSvgTree, type SvgDescriptor } from '../../core/render/rn-svg-renderer';
+import { useThemeColors } from '../hooks/use-theme-colors';
 
 type Locale = 'de' | 'en';
 
@@ -155,7 +156,7 @@ function TappableStaff({
   const cursorBottomY = STAFF_MARGIN_TOP + (LINE_SPACING * 4) + 14;
 
   return (
-    <View style={styles.staffWrapper}>
+    <View style={{ position: 'relative' }}>
       <Svg
         width="100%"
         height={160}
@@ -189,7 +190,7 @@ function TappableStaff({
           <Pressable
             key={`tap-${i}`}
             style={[
-              styles.noteTapTarget,
+              { position: 'absolute', top: 0, bottom: 0, backgroundColor: 'transparent' },
               { left: `${leftPct}%` as any, width: `${widthPct}%` as any },
             ]}
             onPress={() => onTapNote(note, i)}
@@ -211,15 +212,28 @@ function BpmControl({
   onChangeBpm: (bpm: number) => void;
   locale: Locale;
 }) {
+  const colors = useThemeColors();
   return (
-    <View style={styles.bpmRow}>
-      <Text style={styles.bpmLabel}>{t(locale, 'melody_bpm_label')}: {bpm}</Text>
-      <View style={styles.bpmButtons}>
-        <Pressable style={styles.bpmBtn} onPress={() => onChangeBpm(Math.max(40, bpm - 4))} accessibilityRole="button" accessibilityLabel={t(locale, 'melody_bpm_decrease')}>
-          <Text style={styles.bpmBtnText}>−</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '600', flex: 1 }}>
+        {t(locale, 'melody_bpm_label')}: {bpm}
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        <Pressable
+          style={{ width: 44, height: 44, borderRadius: 8, borderWidth: 1, borderColor: colors.borderLight, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}
+          onPress={() => onChangeBpm(Math.max(40, bpm - 4))}
+          accessibilityRole="button"
+          accessibilityLabel={t(locale, 'melody_bpm_decrease')}
+        >
+          <Text style={{ fontSize: 18, color: colors.textSecondary, fontWeight: '700', lineHeight: 22 }}>−</Text>
         </Pressable>
-        <Pressable style={styles.bpmBtn} onPress={() => onChangeBpm(Math.min(200, bpm + 4))} accessibilityRole="button" accessibilityLabel={t(locale, 'melody_bpm_increase')}>
-          <Text style={styles.bpmBtnText}>+</Text>
+        <Pressable
+          style={{ width: 44, height: 44, borderRadius: 8, borderWidth: 1, borderColor: colors.borderLight, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}
+          onPress={() => onChangeBpm(Math.min(200, bpm + 4))}
+          accessibilityRole="button"
+          accessibilityLabel={t(locale, 'melody_bpm_increase')}
+        >
+          <Text style={{ fontSize: 18, color: colors.textSecondary, fontWeight: '700', lineHeight: 22 }}>+</Text>
         </Pressable>
       </View>
     </View>
@@ -236,16 +250,22 @@ function CountInIndicator({
   total: number;
   locale: Locale;
 }) {
+  const colors = useThemeColors();
   if (beat === null) return null;
   return (
-    <View style={styles.countInRow}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }}>
       {Array.from({ length: total }, (_, i) => (
         <View
           key={i}
-          style={[styles.countInDot, i + 1 <= beat && styles.countInDotActive]}
+          style={{
+            width: 12,
+            height: 12,
+            borderRadius: 6,
+            backgroundColor: i + 1 <= beat ? colors.primary : colors.countInDotInactive,
+          }}
         />
       ))}
-      <Text style={styles.countInText}>
+      <Text style={{ fontSize: 13, color: colors.primary, fontWeight: '600' }}>
         {t(locale, 'melody_count_in', { beat: String(beat), total: String(total) })}
       </Text>
     </View>
@@ -295,6 +315,7 @@ export function MelodyTrainerPanel({
   onTapNote,
   onChangeBpm,
 }: Props) {
+  const colors = useThemeColors();
   const notes = getMelodyNotes(exercise);
   const durations = getMelodyDurations(exercise);
   const isCapturing = loadingCapture;
@@ -303,8 +324,8 @@ export function MelodyTrainerPanel({
   const renderedResultNotes = buildMelodyResultRenderNotes(noteResults, durations);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>{t(locale, 'melody_trainer_title')}</Text>
+    <View style={{ gap: 10 }}>
+      <Text style={{ fontSize: 15, fontWeight: '700', color: colors.accent }}>{t(locale, 'melody_trainer_title')}</Text>
 
       {/* BPM control (hidden during capture) */}
       {!isCapturing ? (
@@ -312,8 +333,8 @@ export function MelodyTrainerPanel({
       ) : null}
 
       {/* Target melody staff */}
-      <Text style={styles.staffLabel}>{t(locale, 'melody_target_staff')}</Text>
-      <Text style={styles.tapHint}>{t(locale, 'melody_tap_note_hint')}</Text>
+      <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: 4 }}>{t(locale, 'melody_target_staff')}</Text>
+      <Text style={{ fontSize: 11, color: colors.textSubtle }}>{t(locale, 'melody_tap_note_hint')}</Text>
       <TappableStaff
         clef={exercise.clef}
         notes={notes}
@@ -332,7 +353,7 @@ export function MelodyTrainerPanel({
       {/* Per-note result staff (shown after attempt) */}
       {hasResult ? (
         <>
-          <Text style={styles.staffLabel}>{t(locale, 'melody_result_staff')}</Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: 4 }}>{t(locale, 'melody_result_staff')}</Text>
           <TappableStaff
             clef={exercise.clef}
             notes={notes}
@@ -340,13 +361,20 @@ export function MelodyTrainerPanel({
             noteResults={noteResults}
             renderedNotes={renderedResultNotes}
           />
-          <View style={styles.noteResultsRow}>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             {noteResults.map((result, i) => (
               <View
                 key={i}
-                style={[styles.noteResultBadge, result.correct ? styles.noteResultOk : styles.noteResultBad]}
+                style={{
+                  borderRadius: 6,
+                  paddingHorizontal: 6,
+                  paddingVertical: 2,
+                  minWidth: 36,
+                  alignItems: 'center',
+                  backgroundColor: result.correct ? colors.noteResultOkBg : colors.noteResultBadBg,
+                }}
               >
-                <Text style={styles.noteResultBadgeText}>{Math.round(result.score * 100)}%</Text>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textPrimary }}>{Math.round(result.score * 100)}%</Text>
               </View>
             ))}
           </View>
@@ -355,44 +383,67 @@ export function MelodyTrainerPanel({
 
       {/* Feedback text */}
       {feedback.text ? (
-        <Text style={[styles.feedback, feedback.isCorrect ? styles.feedbackOk : styles.feedbackBad]}>
+        <Text style={{ fontWeight: '700', fontSize: 14, color: feedback.isCorrect ? colors.success : colors.danger }}>
           {feedback.text}
         </Text>
       ) : null}
 
       {/* Control buttons */}
-      <View style={styles.controlsRow}>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
         {/* Regenerate */}
         <Pressable
-          style={[styles.controlBtn, styles.regenerateBtn, isCapturing && styles.disabledButton]}
+          style={[
+            { flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, backgroundColor: colors.borderLight },
+            isCapturing && { opacity: 0.45 },
+          ]}
           onPress={onRegenerate}
           disabled={isCapturing}
           accessibilityRole="button"
           accessibilityLabel={t(locale, 'melody_regenerate')}
         >
-          <Text style={styles.controlBtnText}>{t(locale, 'melody_regenerate')}</Text>
+          <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 13 }}>{t(locale, 'melody_regenerate')}</Text>
         </Pressable>
 
         {/* Play / Stop prompt */}
         {loadingPlay ? (
-          <Pressable style={[styles.controlBtn, styles.stopBtn]} onPress={onStop} disabled={loadingStop} accessibilityRole="button" accessibilityLabel={t(locale, 'melody_stop')}>
-            {loadingStop ? <ActivityIndicator color="#fff" /> : <Text style={styles.controlBtnText}>{t(locale, 'melody_stop')}</Text>}
+          <Pressable
+            style={{ flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, backgroundColor: colors.textMuted }}
+            onPress={onStop}
+            disabled={loadingStop}
+            accessibilityRole="button"
+            accessibilityLabel={t(locale, 'melody_stop')}
+          >
+            {loadingStop ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{t(locale, 'melody_stop')}</Text>}
           </Pressable>
         ) : (
           <Pressable
-            style={[styles.controlBtn, styles.playBtn, isCapturing && styles.disabledButton]}
+            style={[
+              { flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, backgroundColor: colors.primary },
+              isCapturing && { opacity: 0.45 },
+            ]}
             onPress={onPlay}
             disabled={isCapturing}
             accessibilityRole="button"
             accessibilityLabel={t(locale, 'melody_play')}
           >
-            <Text style={styles.controlBtnText}>{t(locale, 'melody_play')}</Text>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{t(locale, 'melody_play')}</Text>
           </Pressable>
         )}
 
         {/* Record / recording in progress */}
         <Pressable
-          style={[styles.controlBtn, isCapturing ? styles.recordingBtn : styles.recordBtn, loadingPlay && styles.disabledButton]}
+          style={[
+            {
+              flex: 1,
+              minHeight: 44,
+              borderRadius: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 8,
+              backgroundColor: isCapturing ? '#dc2626' : colors.amber,
+            },
+            loadingPlay && { opacity: 0.45 },
+          ]}
           onPress={isCapturing ? onStop : onRecord}
           disabled={loadingPlay}
           accessibilityRole="button"
@@ -401,50 +452,10 @@ export function MelodyTrainerPanel({
           {isCapturing ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.controlBtnText}>{t(locale, 'melody_record')}</Text>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>{t(locale, 'melody_record')}</Text>
           )}
         </Pressable>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { gap: 10 },
-  title: { fontSize: 15, fontWeight: '700', color: '#1e40af' },
-  staffLabel: { fontSize: 12, color: '#64748b', fontWeight: '600', marginTop: 4 },
-  tapHint: { fontSize: 11, color: '#94a3b8' },
-  staffWrapper: { position: 'relative' },
-  noteTapTarget: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    backgroundColor: 'transparent',
-  },
-  bpmRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  bpmLabel: { fontSize: 13, color: '#334155', fontWeight: '600', flex: 1 },
-  bpmButtons: { flexDirection: 'row', gap: 6 },
-  bpmBtn: { width: 44, height: 44, borderRadius: 8, borderWidth: 1, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' },
-  bpmBtnText: { fontSize: 18, color: '#334155', fontWeight: '700', lineHeight: 22 },
-  countInRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
-  countInDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#e2e8f0' },
-  countInDotActive: { backgroundColor: '#2563eb' },
-  countInText: { fontSize: 13, color: '#2563eb', fontWeight: '600' },
-  noteResultsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  noteResultBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, minWidth: 36, alignItems: 'center' },
-  noteResultOk: { backgroundColor: '#dcfce7' },
-  noteResultBad: { backgroundColor: '#ffe4e6' },
-  noteResultBadgeText: { fontSize: 11, fontWeight: '700', color: '#1e293b' },
-  feedback: { fontWeight: '700', fontSize: 14 },
-  feedbackOk: { color: '#047857' },
-  feedbackBad: { color: '#be123c' },
-  controlsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  controlBtn: { flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  regenerateBtn: { backgroundColor: '#e2e8f0' },
-  playBtn: { backgroundColor: '#2563eb' },
-  stopBtn: { backgroundColor: '#64748b' },
-  recordBtn: { backgroundColor: '#f59e0b' },
-  recordingBtn: { backgroundColor: '#dc2626' },
-  disabledButton: { opacity: 0.45 },
-  controlBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-});

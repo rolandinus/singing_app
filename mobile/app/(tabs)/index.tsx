@@ -1,11 +1,12 @@
 import { router } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Card } from '../../src/ui/components/Card';
 import { ProgressExplainerCard } from '../../src/ui/components/ProgressExplainerCard';
 import { Screen } from '../../src/ui/components/Screen';
 import { useAppStore } from '../../src/state/use-app-store';
 import { clefLabel, localeTag, modeLabel, skillLabel, t } from '../../src/core/i18n/translator';
+import { useThemeColors } from '../../src/ui/hooks/use-theme-colors';
 
 function masteryColor(mastery: number): string {
   if (mastery < 40) return '#64748b';
@@ -24,6 +25,7 @@ function isToday(isoDate: string): boolean {
 }
 
 export default function DashboardScreen() {
+  const colors = useThemeColors();
   const bootstrapped = useAppStore((s) => s.bootstrapped);
   const settings = useAppStore((s) => s.settings);
   const recentSessions = useAppStore((s) => s.recentSessions);
@@ -39,24 +41,29 @@ export default function DashboardScreen() {
 
   return (
     <Screen>
-      <Card style={styles.hero}>
-        <Text style={styles.eyebrow}>{t(locale, 'hero_program')}</Text>
-        <Text style={styles.heroTitle}>{t(locale, 'hero_next_session')}</Text>
-        <Text style={styles.heroBody}>
+      <Card style={{ backgroundColor: colors.surfaceBlue }}>
+        <Text style={{ fontSize: 12, color: colors.accent, fontWeight: '700' }}>{t(locale, 'hero_program')}</Text>
+        <Text style={{ fontSize: 22, fontWeight: '700', color: colors.textPrimary }}>{t(locale, 'hero_next_session')}</Text>
+        <Text style={{ fontSize: 14, color: colors.textSecondary }}>
           {bootstrapped
             ? t(locale, 'daily_goal', { count: settings.dailyGoalExercises })
             : t(locale, 'loading_data')}
         </Text>
         {bootstrapped ? (
           <>
-            <Text style={styles.todayProgress}>{t(locale, 'today_progress', { done: completedToday, goal: settings.dailyGoalExercises })}</Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${dailyProgress}%` }]} />
+            <Text style={{ color: colors.accent, fontWeight: '600', fontSize: 13 }}>
+              {t(locale, 'today_progress', { done: completedToday, goal: settings.dailyGoalExercises })}
+            </Text>
+            <View style={{ height: 6, borderRadius: 99, backgroundColor: colors.progressTrack, overflow: 'hidden' }}>
+              <View style={{ height: 6, borderRadius: 99, backgroundColor: colors.primaryStrong, width: `${dailyProgress}%` }} />
             </View>
           </>
         ) : null}
         <Pressable
-          style={[styles.primaryButton, loading.startGuided && styles.disabledButton]}
+          style={[
+            { backgroundColor: colors.primaryStrong, minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+            loading.startGuided && { opacity: 0.6 },
+          ]}
           onPress={async () => {
             await startGuided();
             router.push('/practice');
@@ -64,27 +71,44 @@ export default function DashboardScreen() {
           disabled={loading.startGuided}
           accessibilityRole="button"
         >
-          {loading.startGuided ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>{t(locale, 'start_guided')}</Text>}
+          {loading.startGuided
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={{ color: '#fff', fontWeight: '700' }}>{t(locale, 'start_guided')}</Text>}
         </Pressable>
       </Card>
 
       <Card>
-        <Text style={styles.sectionTitle}>{t(locale, 'recent_sessions')}</Text>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>{t(locale, 'recent_sessions')}</Text>
         {recentSessions.length === 0 ? (
-          <Text style={styles.muted}>{t(locale, 'no_sessions')}</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 13 }}>{t(locale, 'no_sessions')}</Text>
         ) : (
           recentSessions.slice(0, 5).map((session) => {
             const accuracy = Math.round(Number(session.summary?.accuracy ?? 0) * 100);
             const badgeColor = accuracy < 40 ? '#64748b' : accuracy < 80 ? '#d97706' : '#16a34a';
 
             return (
-              <View key={session.sessionId} style={styles.sessionRow}>
-                <View style={styles.sessionMain}>
-                  <Text style={styles.sessionDate}>{new Date(session.completedAt).toLocaleDateString(localeTag(locale))}</Text>
-                  <Text style={styles.muted}>{modeLabel(locale, session.mode)}</Text>
+              <View
+                key={session.sessionId}
+                style={{
+                  minHeight: 52,
+                  borderWidth: 1,
+                  borderColor: colors.borderLight,
+                  borderRadius: 10,
+                  paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <View style={{ gap: 2 }}>
+                  <Text style={{ color: colors.textPrimary, fontWeight: '600' }}>
+                    {new Date(session.completedAt).toLocaleDateString(localeTag(locale))}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 13 }}>{modeLabel(locale, session.mode)}</Text>
                 </View>
-                <View style={[styles.badge, { backgroundColor: `${badgeColor}22`, borderColor: `${badgeColor}66` }]}>
-                  <Text style={[styles.badgeText, { color: badgeColor }]}>{accuracy}%</Text>
+                <View style={{ borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, backgroundColor: `${badgeColor}22`, borderColor: `${badgeColor}66` }}>
+                  <Text style={{ fontWeight: '700', fontSize: 12, color: badgeColor }}>{accuracy}%</Text>
                 </View>
               </View>
             );
@@ -93,26 +117,26 @@ export default function DashboardScreen() {
       </Card>
 
       <Card>
-        <Text style={styles.sectionTitle}>{t(locale, 'skill_map_training')}</Text>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>{t(locale, 'skill_map_training')}</Text>
         {settings.enabledClefs.map((clef) => {
           const rows = skillRows.filter((row) => row.clef === clef);
           if (rows.length === 0) return null;
 
           return (
-            <View key={clef} style={styles.clefGroup}>
-              <Text style={styles.clefHeader}>{clefLabel(locale, clef)}</Text>
+            <View key={clef} style={{ gap: 8, paddingTop: 4 }}>
+              <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '700' }}>{clefLabel(locale, clef)}</Text>
               {rows.map((row) => {
                 const fillColor = masteryColor(row.mastery);
                 return (
-                  <View key={`${row.clef}.${row.skillKey}`} style={styles.skillRow}>
-                    <View style={styles.skillRowHead}>
-                      <Text style={styles.skillName}>{skillLabel(locale, row.skillKey)}</Text>
-                      <Text style={styles.muted}>L{row.level}</Text>
+                  <View key={`${row.clef}.${row.skillKey}`} style={{ gap: 6, paddingVertical: 4 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: colors.textSecondary, fontWeight: '600', flex: 1, paddingRight: 8 }}>{skillLabel(locale, row.skillKey)}</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: 13 }}>L{row.level}</Text>
                     </View>
-                    <View style={styles.masteryTrack}>
-                      <View style={[styles.masteryFill, { width: `${row.mastery}%`, backgroundColor: fillColor }]} />
+                    <View style={{ height: 8, borderRadius: 99, backgroundColor: colors.masteryTrack, overflow: 'hidden' }}>
+                      <View style={{ height: 8, borderRadius: 99, backgroundColor: fillColor, width: `${row.mastery}%` }} />
                     </View>
-                    <Text style={styles.muted}>{row.mastery}% • {row.attemptsTotal} {t(locale, 'attempts')}</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 13 }}>{row.mastery}% • {row.attemptsTotal} {t(locale, 'attempts')}</Text>
                   </View>
                 );
               })}
@@ -124,40 +148,3 @@ export default function DashboardScreen() {
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  hero: { backgroundColor: '#dbeafe' },
-  eyebrow: { fontSize: 12, color: '#1e40af', fontWeight: '700' },
-  heroTitle: { fontSize: 22, fontWeight: '700', color: '#0f172a' },
-  heroBody: { fontSize: 14, color: '#334155' },
-  todayProgress: { color: '#1e40af', fontWeight: '600', fontSize: 13 },
-  progressTrack: { height: 6, borderRadius: 99, backgroundColor: '#bfdbfe', overflow: 'hidden' },
-  progressFill: { height: 6, borderRadius: 99, backgroundColor: '#1d4ed8' },
-  primaryButton: { backgroundColor: '#1d4ed8', minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  primaryButtonText: { color: '#fff', fontWeight: '700' },
-  disabledButton: { opacity: 0.6 },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
-  muted: { color: '#64748b', fontSize: 13 },
-  sessionRow: {
-    minHeight: 52,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sessionMain: { gap: 2 },
-  sessionDate: { color: '#0f172a', fontWeight: '600' },
-  badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  badgeText: { fontWeight: '700', fontSize: 12 },
-  clefGroup: { gap: 8, paddingTop: 4 },
-  clefHeader: { color: '#0f172a', fontSize: 14, fontWeight: '700' },
-  skillRow: { gap: 6, paddingVertical: 4 },
-  skillRowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  skillName: { color: '#1e293b', fontWeight: '600', flex: 1, paddingRight: 8 },
-  masteryTrack: { height: 8, borderRadius: 99, backgroundColor: '#e2e8f0', overflow: 'hidden' },
-  masteryFill: { height: 8, borderRadius: 99 },
-});
