@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { INTERVAL_QUALITY_LABELS } from '../core/config/curriculum';
-import { ExerciseGenerator } from '../core/domain/exercise-generator';
+import { buildWeightedIntervalStepPool, ExerciseGenerator } from '../core/domain/exercise-generator';
 
 describe('ExerciseGenerator', () => {
   it('generates note naming with 4 choices', () => {
@@ -44,5 +44,10 @@ describe('ExerciseGenerator', () => {
     expect(Array.isArray((ex.expectedAnswer as any).targetMidis)).toBe(true);
     expect((ex.prompt as any).notes.length).toBeGreaterThanOrEqual(3);
     expect((ex.prompt as any).notes.length).toBe((ex.expectedAnswer as any).targetMidis.length);
+  });
+
+  it('weights prime interval step lower than other interval steps', () => {
+    expect(buildWeightedIntervalStepPool([1, 2, 3])).toEqual([1, 2, 2, 2, 3, 3, 3]);
+    expect(buildWeightedIntervalStepPool([1])).toEqual([1]);
   });
 });

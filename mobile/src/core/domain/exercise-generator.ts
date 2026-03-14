@@ -19,6 +19,20 @@ function getIntervalStepsForLevel(level: number): number[] {
   return [1, 2, 3, 4, 5, 6, 7, 8];
 }
 
+/**
+ * Build a weighted pool for random interval-step selection.
+ * Prime (step=1) is 1/3 as likely as other interval steps.
+ */
+export function buildWeightedIntervalStepPool(steps: number[]): number[] {
+  const uniqueSteps = Array.from(
+    new Set(steps.filter((step) => Number.isFinite(step) && step >= 1)),
+  );
+  if (uniqueSteps.length === 0) return [2];
+  if (uniqueSteps.length === 1) return uniqueSteps;
+
+  return uniqueSteps.flatMap((step) => (step === 1 ? [1] : [step, step, step]));
+}
+
 function getLevelRange(clef: Clef, level: number) {
   const base = CLEF_NOTE_RANGES[clef] ?? CLEF_NOTE_RANGES.treble;
   const expansions = {
@@ -62,10 +76,11 @@ function getNaturalPool(clef: Clef, level: number): number[] {
 function generateIntervalPair(clef: Clef, level: number) {
   const pool = getNaturalPool(clef, level);
   const steps = getIntervalStepsForLevel(level);
+  const weightedSteps = buildWeightedIntervalStepPool(steps);
 
   let attempts = 0;
   while (attempts < 100) {
-    const intervalStep = randomChoice(steps);
+    const intervalStep = randomChoice(weightedSteps);
     const index = Math.floor(Math.random() * pool.length);
     const direction = Math.random() < 0.5 ? 1 : -1;
 
