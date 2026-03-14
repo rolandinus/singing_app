@@ -64,6 +64,7 @@ export function StaffSvg({
   overlayIndex,
   overlayDuration,
   overlayDirection,
+  singleNoteLayout,
 }: {
   clef?: 'treble' | 'bass';
   notes?: string[];
@@ -72,8 +73,12 @@ export function StaffSvg({
   overlayIndex?: number | null;
   overlayDuration?: 'quarter' | 'half';
   overlayDirection?: 'up' | 'down' | null;
+  singleNoteLayout?: boolean;
 }) {
-  const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null);
+  const promptNoteOptions = singleNoteLayout && notes.length === 1
+    ? { noteStyles: [{ rx: 10, ry: 8 }] }
+    : undefined;
+  const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null, undefined, promptNoteOptions);
   const overlayLayoutCount = overlayIndex != null ? Math.max(notes.length, overlayIndex + 1) : notes.length;
   const overlayNodes = overlayNote && overlayIndex != null
     ? buildNoteNodes(
@@ -84,7 +89,12 @@ export function StaffSvg({
       {
         layoutNoteCount: overlayLayoutCount,
         slotIndices: [overlayIndex],
-        noteStyles: [{ fill: '#dc2626', stroke: '#dc2626', rx: 8, ry: 6 }],
+        noteStyles: [{
+          fill: '#dc2626',
+          stroke: '#dc2626',
+          rx: singleNoteLayout ? 10 : 8,
+          ry: singleNoteLayout ? 8 : 6,
+        }],
       },
     )
     : [];
@@ -93,9 +103,10 @@ export function StaffSvg({
   const arrowX = overlayNote && overlayIndex != null ? xForSlot(overlayIndex, overlayLayoutCount) : null;
   const arrowY = overlayNote && overlayIndex != null ? yForScientific(overlayNote, clef) : null;
   const directionArrow = overlayDirection === 'up' ? '↑' : overlayDirection === 'down' ? '↓' : null;
+  const svgHeight = singleNoteLayout ? 132 : 160;
 
   return (
-    <Svg width="100%" height={160} viewBox={`0 0 ${SVG_STAFF_WIDTH} ${SVG_STAFF_HEIGHT}`}>
+    <Svg width="100%" height={svgHeight} viewBox={`0 0 ${SVG_STAFF_WIDTH} ${SVG_STAFF_HEIGHT}`}>
       {tree.map((node, index) => renderNode(node, String(index)))}
       {directionArrow && arrowX != null && arrowY != null ? (
         <SvgText

@@ -381,6 +381,11 @@ export default function PracticeScreen() {
                 <>
                   <Text style={{ fontSize: 16, fontWeight: '600', color: colors.textPrimary }}>{buildPrompt(currentExercise, locale)}</Text>
                   {subPrompt ? <Text style={{ fontSize: 13, color: colors.textSecondary }}>{subPrompt}</Text> : null}
+                  {currentExercise.skillKey === 'sing_note' ? (
+                    <Text style={{ fontSize: 24, fontWeight: '800', color: colors.primaryStrong, textAlign: 'center', letterSpacing: 0.6 }}>
+                      {String(currentExercise.prompt.target).toUpperCase()}
+                    </Text>
+                  ) : null}
 
                   {currentExercise.skillKey === 'sing_interval' && currentExercise.metadata.intervalLabel ? (
                     <Text style={{ fontSize: 18, fontWeight: '700', color: colors.primary, textAlign: 'center', marginVertical: 4 }}>
@@ -398,6 +403,7 @@ export default function PracticeScreen() {
                       overlayNote={liveSingingFeedback.isOffTarget ? liveSingingFeedback.detectedNote : null}
                       overlayIndex={liveSingingFeedback.isOffTarget ? liveSingingFeedback.targetIndex : null}
                       overlayDirection={liveSingingFeedback.isOffTarget ? liveSingingFeedback.correctionDirection : null}
+                      singleNoteLayout={currentExercise.skillKey === 'sing_note'}
                     />
                   ) : (
                     <Text style={{ fontSize: 28, textAlign: 'center', color: colors.textSecondary, marginVertical: 10 }}>
