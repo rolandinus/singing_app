@@ -1,6 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CLEF_OPTIONS, DEFAULT_SETTINGS } from '../../core/config/curriculum';
+import { CLEF_OPTIONS, DEFAULT_SETTINGS, DEFAULT_BPM } from '../../core/config/curriculum';
 import type { AppSettings, Locale, ProgressRecord, SessionRecord } from '../../core/types';
+
+const MIN_BPM = 40;
+const MAX_BPM = 200;
 
 const SETTINGS_KEY = 'ss_mobile_settings_v1';
 const DATA_KEY = 'ss_mobile_data_v1';
@@ -40,6 +43,9 @@ function sanitizeSettings(candidate: Partial<AppSettings> | null | undefined): A
     dailyGoalExercises: Number.isFinite(Number(merged.dailyGoalExercises))
       ? Math.max(5, Math.min(100, Number(merged.dailyGoalExercises)))
       : DEFAULT_SETTINGS.dailyGoalExercises,
+    bpm: Number.isFinite(Number(merged.bpm))
+      ? Math.max(MIN_BPM, Math.min(MAX_BPM, Number(merged.bpm)))
+      : DEFAULT_BPM,
   };
 }
 

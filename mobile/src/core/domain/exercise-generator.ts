@@ -1,5 +1,5 @@
 import { CLEF_NOTE_RANGES, INTERVAL_LABELS, INTERVAL_QUALITY_LABELS, RHYTHM_PATTERNS } from '../config/curriculum';
-import type { Clef, Exercise, MelodyOptions, SkillKey } from '../types';
+import type { Clef, Exercise, MelodyNote, MelodyOptions, NoteType, SkillKey } from '../types';
 import { buildDistractorChoices, getNaturalMidiPool, midiToScientific, noteLetter, randomChoice } from '../utils/note-helpers';
 
 export const DEFAULT_MELODY_OPTIONS: MelodyOptions = {
@@ -92,10 +92,22 @@ function generateIntervalPair(clef: Clef, level: number) {
   };
 }
 
-function generateMelodyMidis(clef: Clef, level: number, options: MelodyOptions): number[] {
+/** Return a random note duration: half note with 40% chance for first note, 25% for others. */
+function randomNoteDuration(isFirst: boolean): NoteType {
+  const chanceForHalf = isFirst ? 0.4 : 0.25;
+  return Math.random() < chanceForHalf ? 'half' : 'quarter';
+}
+
+type MelodyNoteRaw = { midi: number; duration: NoteType };
+
+function generateMelodyNotes(clef: Clef, level: number, options: MelodyOptions): MelodyNoteRaw[] {
   const pool = getNaturalPool(clef, level).sort((a, b) => a - b);
   if (pool.length === 0) {
-    return [60, 62, 64];
+    return [
+      { midi: 60, duration: 'quarter' },
+      { midi: 62, duration: 'quarter' },
+      { midi: 64, duration: 'half' },
+    ];
   }
 
   // Resolve start note index from firstNoteMode.
@@ -106,6 +118,9 @@ function generateMelodyMidis(clef: Clef, level: number, options: MelodyOptions):
   } else if (options.firstNoteMode === 'C4') {
     const c4Midi = 60; // MIDI 60 = C4
     startMidi = pool.reduce((closest, m) => (Math.abs(m - c4Midi) < Math.abs(closest - c4Midi) ? m : closest), pool[0]);
+  } else if (options.firstNoteMode === 'C6') {
+    const c6Midi = 84; // MIDI 84 = C6
+    startMidi = pool.reduce((closest, m) => (Math.abs(m - c6Midi) < Math.abs(closest - c6Midi) ? m : closest), pool[0]);
   } else {
     startMidi = randomChoice(pool);
   }
@@ -115,7 +130,7 @@ function generateMelodyMidis(clef: Clef, level: number, options: MelodyOptions):
 
   const noteCount = Math.max(3, Math.min(6, level + 2));
   const steps = options.allowedIntervalSteps.length > 0 ? options.allowedIntervalSteps : DEFAULT_MELODY_OPTIONS.allowedIntervalSteps;
-  const midis = [pool[index]];
+  const notes: MelodyNoteRaw[] = [{ midi: pool[index], duration: randomNoteDuration(true) }];
 
   for (let i = 1; i < noteCount; i += 1) {
     const step = randomChoice(steps);
@@ -128,10 +143,10 @@ function generateMelodyMidis(clef: Clef, level: number, options: MelodyOptions):
 
     next = Math.max(0, Math.min(pool.length - 1, next));
     index = next;
-    midis.push(pool[index]);
+    notes.push({ midi: pool[index], duration: randomNoteDuration(false) });
   }
 
-  return midis;
+  return notes;
 }
 
 export class ExerciseGenerator {
@@ -279,8 +294,12 @@ export class ExerciseGenerator {
   }
 
   private generateSingMelody(clef: Clef, level: number, options: MelodyOptions): Exercise {
-    const melodyMidis = generateMelodyMidis(clef, level, options);
-    const melodyNotes = melodyMidis.map((midi) => midiToScientific(midi));
+    const rawNotes = generateMelodyNotes(clef, level, options);
+    const melodyNotes: MelodyNote[] = rawNotes.map(({ midi, duration }) => ({
+      pitch: midiToScientific(midi),
+      duration,
+    }));
+    const melodyMidis = rawNotes.map(({ midi }) => midi);
 
     return {
       id: createExerciseId('sing_melody'),

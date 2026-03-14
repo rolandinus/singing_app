@@ -1,0 +1,2 @@
+When ending a practise session and no exercise has beend completed yet, 
+just end the session without asking for confirmation or showing result screen, also dont record the session for streak count etc, just abort it

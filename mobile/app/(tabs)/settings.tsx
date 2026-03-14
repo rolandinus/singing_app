@@ -9,6 +9,9 @@ import { useAppStore } from '../../src/state/use-app-store';
 
 const MIN_DAILY_GOAL = 1;
 const MAX_DAILY_GOAL = 50;
+const MIN_BPM = 40;
+const MAX_BPM = 200;
+const BPM_STEP = 4;
 
 export default function SettingsScreen() {
   const settings = useAppStore((s) => s.settings);
@@ -39,6 +42,12 @@ export default function SettingsScreen() {
     if (!Number.isFinite(next) || next < MIN_DAILY_GOAL || next > MAX_DAILY_GOAL) return;
     if (next === settings.dailyGoalExercises) return;
     saveSettings({ dailyGoalExercises: next });
+  }
+
+  function setBpm(next: number) {
+    const clamped = Math.max(MIN_BPM, Math.min(MAX_BPM, next));
+    if (clamped === settings.bpm) return;
+    saveSettings({ bpm: clamped });
   }
 
   function setLocale(next: Locale) {
@@ -100,6 +109,16 @@ export default function SettingsScreen() {
           min={MIN_DAILY_GOAL}
           max={MAX_DAILY_GOAL}
           onChange={setDailyGoal}
+          disabled={saving}
+        />
+
+        <Stepper
+          label={t(locale, 'bpm_label')}
+          value={settings.bpm}
+          min={MIN_BPM}
+          max={MAX_BPM}
+          step={BPM_STEP}
+          onChange={setBpm}
           disabled={saving}
         />
 

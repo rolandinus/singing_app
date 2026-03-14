@@ -1,0 +1,1 @@
+When creating melodies use quarter notes and half notes

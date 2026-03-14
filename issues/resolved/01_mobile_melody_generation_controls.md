@@ -4,7 +4,8 @@
 The mobile app can now generate and score `sing_melody` exercises, but it still does not expose the melody-shaping controls that exist in the browser trainer. Mobile custom practice only lets the user pick family, skill, clef, level, and count, so every melody is generated from fixed defaults. Add the missing melody-specific controls and pass them through the mobile session/generator stack so custom melody practice can be configured intentionally instead of relying on opaque generator behavior.
 
 ## Current State
-`mobile/app/(tabs)/practice.tsx` renders a generic custom-session form with family, skill, clef, level, and count controls only. There is no conditional UI when `selectedSkill === 'sing_melody'`.
+`mobile/app/(tabs)/practice.tsx` renders a generic custom-session form with family, skill, clef, level, and count controls only. 
+There is no conditional UI when `selectedSkill === 'sing_melody'`.
 
 `mobile/src/core/domain/exercise-generator.ts` generates melody prompts from `generateMelodyMidis(clef, level)` and only returns `prompt.notes` plus `expectedAnswer.targetMidis`. There is no input path for browser-style melody options such as:
 

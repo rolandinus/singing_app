@@ -1,0 +1,1 @@
+Add a bpm setting which affects all relevant exercises

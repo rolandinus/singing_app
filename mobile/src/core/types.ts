@@ -2,8 +2,17 @@ export type Clef = 'treble' | 'bass';
 export type Locale = 'de' | 'en';
 export type ExerciseFamily = 'visual' | 'aural' | 'singing';
 
+/** Note duration type used in melody exercises. */
+export type NoteType = 'quarter' | 'half';
+
+/** A single note in a melody, with pitch and duration. */
+export type MelodyNote = {
+  pitch: string;
+  duration: NoteType;
+};
+
 /** First-note selection mode for melody generation. */
-export type MelodyFirstNoteMode = 'random' | 'C2' | 'C4';
+export type MelodyFirstNoteMode = 'random' | 'C2' | 'C4' | 'C6';
 
 /** Configurable options for sing_melody exercise generation. */
 export type MelodyOptions = {
@@ -92,4 +101,6 @@ export type AppSettings = {
   dailyGoalExercises: number;
   pitchToleranceCentsByLevel: Record<number, number>;
   locale: Locale;
+  /** BPM used for melody playback and capture timing across all relevant exercises. */
+  bpm: number;
 };

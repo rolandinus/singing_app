@@ -6,11 +6,12 @@ type StepperProps = {
   value: number;
   min: number;
   max: number;
+  step?: number;
   onChange: (next: number) => void;
   disabled?: boolean;
 };
 
-export function Stepper({ label, value, min, max, onChange, disabled = false }: StepperProps) {
+export function Stepper({ label, value, min, max, step = 1, onChange, disabled = false }: StepperProps) {
   const canDec = !disabled && value > min;
   const canInc = !disabled && value < max;
 
@@ -18,13 +19,13 @@ export function Stepper({ label, value, min, max, onChange, disabled = false }: 
     <View style={styles.root}>
       <Text style={styles.label}>{label}</Text>
       <View style={styles.row}>
-        <Pressable style={[styles.button, !canDec && styles.buttonDisabled]} onPress={() => onChange(value - 1)} disabled={!canDec}>
+        <Pressable style={[styles.button, !canDec && styles.buttonDisabled]} onPress={() => onChange(Math.max(min, value - step))} disabled={!canDec}>
           <Text style={styles.buttonText}>-</Text>
         </Pressable>
         <View style={styles.valueWrap}>
           <Text style={styles.value}>{value}</Text>
         </View>
-        <Pressable style={[styles.button, !canInc && styles.buttonDisabled]} onPress={() => onChange(value + 1)} disabled={!canInc}>
+        <Pressable style={[styles.button, !canInc && styles.buttonDisabled]} onPress={() => onChange(Math.min(max, value + step))} disabled={!canInc}>
           <Text style={styles.buttonText}>+</Text>
         </Pressable>
       </View>

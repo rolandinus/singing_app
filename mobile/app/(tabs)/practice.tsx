@@ -24,7 +24,13 @@ function promptToNotes(exercise: Exercise | null): string[] {
   if (exercise.skillKey === 'interval_visual') return [String(exercise.prompt.first), String(exercise.prompt.second)];
   if (exercise.skillKey === 'sing_note') return [String(exercise.prompt.target)];
   if (exercise.skillKey === 'sing_interval') return [String(exercise.prompt.reference), String(exercise.prompt.target)];
-  if (exercise.skillKey === 'sing_melody') return Array.isArray(exercise.prompt.notes) ? (exercise.prompt.notes as string[]).map(String) : [];
+  if (exercise.skillKey === 'sing_melody') {
+    if (!Array.isArray(exercise.prompt.notes)) return [];
+    return (exercise.prompt.notes as Array<unknown>).map((n) => {
+      if (n && typeof n === 'object' && 'pitch' in n) return String((n as Record<string, unknown>).pitch);
+      return String(n);
+    });
+  }
   return [];
 }
 
@@ -65,6 +71,7 @@ export default function PracticeScreen() {
   const singingNoteIndex = useAppStore((s) => s.singingNoteIndex);
   const pitchDebug = useAppStore((s) => s.pitchDebug);
   const nextExercise = useAppStore((s) => s.nextExercise);
+  const abortSession = useAppStore((s) => s.abortSession);
   const endSession = useAppStore((s) => s.endSession);
   const locale = settings.locale;
   const familySkills = SKILL_DEFINITIONS.filter((s) => s.family === selectedFamily);
@@ -111,6 +118,19 @@ export default function PracticeScreen() {
       setShowEndSessionConfirm(false);
     }
   }, [sessionActive, showEndSessionConfirm]);
+
+  // Reset firstNoteMode to 'random' when the clef changes and the current mode
+  // is not valid for the newly selected clef (e.g. C2 is bass-only, C6 is treble-only).
+  const trebleFirstNoteModes: MelodyFirstNoteMode[] = ['random', 'C4', 'C6'];
+  const bassFirstNoteModes: MelodyFirstNoteMode[] = ['random', 'C2', 'C4'];
+  const clefFirstNoteModes = selectedClef === 'treble' ? trebleFirstNoteModes : bassFirstNoteModes;
+
+  React.useEffect(() => {
+    if (!clefFirstNoteModes.includes(selectedMelodyOptions.firstNoteMode)) {
+      setSelectedMelodyOptions({ firstNoteMode: 'random' });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClef]);
 
   return (
     <Screen>
@@ -170,12 +190,14 @@ export default function PracticeScreen() {
 
               <Text style={styles.label}>{t(locale, 'melody_first_note')}</Text>
               <View style={styles.chipsRow}>
-                {(['random', 'C2', 'C4'] as MelodyFirstNoteMode[]).map((mode) => {
-                  const labelKey = mode === 'random'
+                {clefFirstNoteModes.map((mode) => {
+                  const labelKey: TranslationKey = mode === 'random'
                     ? 'melody_first_note_random'
                     : mode === 'C2'
                       ? 'melody_first_note_c2'
-                      : 'melody_first_note_c4';
+                      : mode === 'C6'
+                        ? 'melody_first_note_c6'
+                        : 'melody_first_note_c4';
                   return (
                     <Pressable
                       key={mode}
@@ -366,6 +388,13 @@ export default function PracticeScreen() {
                     sessionIndex: sessionMeta.index,
                     sessionTotal: sessionMeta.total,
                   });
+                  // If no exercise has been answered yet, abort immediately without confirmation or summary.
+                  const noExerciseCompleted = sessionMeta.index === 0 && !feedback.text;
+                  if (noExerciseCompleted) {
+                    logEndSessionDebug('abort_session_no_exercise_completed');
+                    abortSession();
+                    return;
+                  }
                   logEndSessionDebug('end_session_confirm_opened');
                   setShowEndSessionConfirm(true);
                 }}

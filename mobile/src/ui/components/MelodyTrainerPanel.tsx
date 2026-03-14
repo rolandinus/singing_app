@@ -5,7 +5,7 @@ import { SVG_STAFF_HEIGHT, SVG_STAFF_WIDTH } from '../../core/config/constants';
 import { COUNT_IN_BEATS } from '../../core/services/session-service';
 import type { MelodyNoteResult } from '../../core/services/session-service';
 import { t, type TranslationKey } from '../../core/i18n/translator';
-import type { Clef, Exercise } from '../../core/types';
+import type { Clef, Exercise, MelodyNote, NoteType } from '../../core/types';
 import { buildNoteNodes, buildStaffNodes } from '../../core/render/staff-builder';
 import { toReactNativeSvgTree, type SvgDescriptor } from '../../core/render/rn-svg-renderer';
 
@@ -30,28 +30,47 @@ function renderNode(node: SvgDescriptor, key: string): React.ReactNode {
   return <Component key={key} {...node.props}>{children}</Component>;
 }
 
-/** Read notes array safely from a melody exercise prompt. */
-function getMelodyNotes(exercise: Exercise): string[] {
+/** Read MelodyNote array safely from a melody exercise prompt. */
+function getMelodyNoteObjects(exercise: Exercise): MelodyNote[] {
   if (exercise.skillKey !== 'sing_melody') return [];
   const notes = (exercise.prompt as Record<string, unknown>).notes;
-  return Array.isArray(notes) ? (notes as unknown[]).map(String) : [];
+  if (!Array.isArray(notes)) return [];
+  return (notes as unknown[]).map((n) => {
+    if (n && typeof n === 'object' && 'pitch' in n && 'duration' in n) {
+      return n as MelodyNote;
+    }
+    // Backwards compatibility: bare string treated as a quarter note.
+    return { pitch: String(n), duration: 'quarter' as NoteType };
+  });
+}
+
+/** Extract pitch strings from MelodyNote array. */
+function getMelodyNotes(exercise: Exercise): string[] {
+  return getMelodyNoteObjects(exercise).map((n) => n.pitch);
+}
+
+/** Extract duration array from MelodyNote array. */
+function getMelodyDurations(exercise: Exercise): NoteType[] {
+  return getMelodyNoteObjects(exercise).map((n) => n.duration);
 }
 
 /** Staff with per-note tap-to-audition support and optional correctness overlay. */
 function TappableStaff({
   clef,
   notes,
+  durations,
   highlightIndex,
   noteResults,
   onTapNote,
 }: {
   clef: Clef;
   notes: string[];
+  durations?: NoteType[];
   highlightIndex?: number | null;
   noteResults?: MelodyNoteResult[];
   onTapNote?: (note: string, index: number) => void;
 }) {
-  const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null);
+  const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null, durations);
   const staffNodes = buildStaffNodes(clef);
   const allNodes = [...staffNodes, ...noteNodes];
   const tree = toReactNativeSvgTree(allNodes);
@@ -198,6 +217,7 @@ export function MelodyTrainerPanel({
   onChangeBpm,
 }: Props) {
   const notes = getMelodyNotes(exercise);
+  const durations = getMelodyDurations(exercise);
   const isCapturing = loadingCapture;
   const isCountingIn = isCapturing && countInBeat !== null;
   const hasResult = noteResults.length > 0;
@@ -217,6 +237,7 @@ export function MelodyTrainerPanel({
       <TappableStaff
         clef={exercise.clef}
         notes={notes}
+        durations={durations}
         highlightIndex={isCapturing && !isCountingIn ? singingNoteIndex : null}
         onTapNote={!isCapturing ? onTapNote : undefined}
       />
@@ -231,6 +252,7 @@ export function MelodyTrainerPanel({
           <TappableStaff
             clef={exercise.clef}
             notes={notes}
+            durations={durations}
             noteResults={noteResults}
           />
           <View style={styles.noteResultsRow}>

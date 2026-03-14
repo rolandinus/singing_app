@@ -61,6 +61,8 @@ export const MAX_LEVEL = 5;
 export const MASTERY_THRESHOLD = 0.85;
 export const ROLLING_WINDOW_SIZE = 20;
 
+export const DEFAULT_BPM = 72;
+
 export const DEFAULT_SETTINGS: AppSettings = {
   enabledClefs: ['treble', 'bass'],
   defaultClef: 'treble',
@@ -73,6 +75,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     5: 30,
   },
   locale: 'de',
+  bpm: DEFAULT_BPM,
 };
 
 export const CLEF_NOTE_RANGES: Record<Clef, { minMidi: number; maxMidi: number }> = {

@@ -1,0 +1,1 @@
+For the violin cleff, start note selection should be c4 or c6, instead of c2,c4
