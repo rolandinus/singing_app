@@ -15,6 +15,7 @@ import { ExpoPitchCapturePort, type PitchCaptureDebugSnapshot } from '../adapter
 
 const pitchCapturePort = new ExpoPitchCapturePort();
 const service = new SessionService(new AsyncStoragePort(), new ExpoAudioPromptPort(), pitchCapturePort);
+const MAX_PITCH_DEBUG_EVENTS = 2500;
 
 function logStoreDebug(stage: string, details: Record<string, unknown> = {}) {
   console.log(`[store:end-session] ${stage}`, details);
@@ -99,6 +100,8 @@ type StoreState = {
   /** Index of the note currently being sung during a recording attempt, or null when not recording. */
   singingNoteIndex: number | null;
   pitchDebug: PitchDebugState;
+  /** Rolling raw pitch debug snapshots from the capture adapter. */
+  pitchDebugEvents: PitchCaptureDebugSnapshot[];
   /** BPM used for melody playback and capture timing. */
   melodyBpm: number;
   /** Current count-in beat (1–4) during count-in phase, null otherwise. */
@@ -146,11 +149,19 @@ type StoreState = {
   setSelectedLevel: (value: number) => void;
   setSelectedCount: (value: number) => void;
   setSelectedMelodyOptions: (value: Partial<MelodyOptions>) => void;
+  clearPitchDebugEvents: () => void;
   clearSummary: () => void;
 };
 
 function firstSkillForFamily(family: ExerciseFamily): SkillKey {
   return (SKILL_DEFINITIONS.find((s) => s.family === family)?.key ?? 'note_naming') as SkillKey;
+}
+
+function resolveSelectedClef(settings: AppSettings, selectedClef: Clef): Clef {
+  const enabledClefs = settings.enabledClefs.length > 0 ? settings.enabledClefs : [settings.defaultClef];
+  if (enabledClefs.includes(selectedClef)) return selectedClef;
+  if (enabledClefs.includes(settings.defaultClef)) return settings.defaultClef;
+  return enabledClefs[0] ?? 'treble';
 }
 
 export const useAppStore = create<StoreState>((set, get) => ({
@@ -171,6 +182,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
   selectedMelodyOptions: { ...DEFAULT_MELODY_OPTIONS },
   singingNoteIndex: null,
   pitchDebug: { ...INITIAL_PITCH_DEBUG_STATE },
+  pitchDebugEvents: [],
   melodyBpm: DEFAULT_MELODY_BPM,
   melodyCountInBeat: null,
   melodyNoteResults: [],
@@ -189,7 +201,11 @@ export const useAppStore = create<StoreState>((set, get) => ({
 
   async bootstrap() {
     service.setPitchDebugListener((snapshot) => {
-      set((state) => ({ pitchDebug: mergePitchDebugState(state.pitchDebug, snapshot as PitchCaptureDebugSnapshot) }));
+      const typed = snapshot as PitchCaptureDebugSnapshot;
+      set((state) => ({
+        pitchDebug: mergePitchDebugState(state.pitchDebug, typed),
+        pitchDebugEvents: [...state.pitchDebugEvents, typed].slice(-MAX_PITCH_DEBUG_EVENTS),
+      }));
     });
 
     await service.init();
@@ -238,6 +254,10 @@ export const useAppStore = create<StoreState>((set, get) => ({
     set((state) => ({ loading: { ...state.loading, startCustom: true } }));
     try {
       const state = get();
+      const effectiveClef = resolveSelectedClef(state.settings, state.selectedClef);
+      if (effectiveClef !== state.selectedClef) {
+        set({ selectedClef: effectiveClef });
+      }
 
       // Validate melody options before starting: require at least one interval step.
       if (state.selectedSkill === 'sing_melody' && state.selectedMelodyOptions.allowedIntervalSteps.length === 0) {
@@ -247,7 +267,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
 
       const started = service.startCustomSession({
         skillKey: state.selectedSkill,
-        clef: state.selectedClef,
+        clef: effectiveClef,
         level: state.selectedLevel,
         count: state.selectedCount,
         melodyOptions: state.selectedSkill === 'sing_melody' ? state.selectedMelodyOptions : undefined,
@@ -559,11 +579,20 @@ export const useAppStore = create<StoreState>((set, get) => ({
     set((state) => ({ loading: { ...state.loading, saveSettings: true } }));
     try {
       const settings = await service.saveSettings(partial);
-      const next: Partial<StoreState> = { settings };
-      if (partial.bpm !== undefined) {
-        next.melodyBpm = settings.bpm;
-      }
-      set(next);
+      set((state) => {
+        const next: Partial<StoreState> = { settings };
+        if (partial.bpm !== undefined) {
+          next.melodyBpm = settings.bpm;
+        }
+
+        if (partial.defaultClef !== undefined) {
+          next.selectedClef = resolveSelectedClef(settings, settings.defaultClef);
+        } else if (partial.enabledClefs !== undefined) {
+          next.selectedClef = resolveSelectedClef(settings, state.selectedClef);
+        }
+
+        return next;
+      });
       get().refreshDashboard();
     } finally {
       set((state) => ({ loading: { ...state.loading, saveSettings: false } }));
@@ -582,6 +611,12 @@ export const useAppStore = create<StoreState>((set, get) => ({
   setSelectedCount(value) { set({ selectedCount: Math.max(1, Math.min(50, value)) }); },
   setSelectedMelodyOptions(partial) {
     set((state) => ({ selectedMelodyOptions: { ...state.selectedMelodyOptions, ...partial } }));
+  },
+  clearPitchDebugEvents() {
+    set({
+      pitchDebugEvents: [],
+      pitchDebug: { ...INITIAL_PITCH_DEBUG_STATE, timestampMs: Date.now(), message: 'debug_history_cleared' },
+    });
   },
   clearSummary() { set({ summary: null }); },
 }));
