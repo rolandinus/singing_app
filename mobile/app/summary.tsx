@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { clefLabel, modeLabel, skillLabel, t } from '../src/core/i18n/translator';
 import { useAppStore } from '../src/state/use-app-store';
 import { Card } from '../src/ui/components/Card';
+import { ProgressExplainerCard } from '../src/ui/components/ProgressExplainerCard';
 import { Screen } from '../src/ui/components/Screen';
 
 export default function SummaryScreen() {
@@ -56,6 +57,8 @@ export default function SummaryScreen() {
         ) : (
           <Text style={styles.body}>{t(locale, 'no_skill_changes')}</Text>
         )}
+
+        <ProgressExplainerCard locale={locale} />
 
         <Text style={styles.streakText}>{t(locale, 'streak_days', { count: summary.streakDays ?? 0 })}</Text>
 

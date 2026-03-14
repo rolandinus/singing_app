@@ -116,6 +116,8 @@ const TRANSLATIONS = {
     melody_note_correct: 'Korrekt',
     melody_note_wrong: 'Abweichend',
     melody_tap_note_hint: 'Tippe eine Note zum Vorhören',
+    progress_explainer_title: 'Wie Level und Mastery funktionieren',
+    progress_explainer_body: 'Level gehen von L1 bis L{maxLevel}. Mit höheren Levels werden Umfang und Schwierigkeit größer. Mastery zeigt deine Trefferquote über die letzten {window} Versuche. Ab {threshold}% steigst du ins nächste Level auf.',
   },
   en: {
     nav_dashboard: 'Dashboard',
@@ -232,6 +234,8 @@ const TRANSLATIONS = {
     melody_note_correct: 'Correct',
     melody_note_wrong: 'Off',
     melody_tap_note_hint: 'Tap a note to preview',
+    progress_explainer_title: 'How levels and mastery work',
+    progress_explainer_body: 'Levels run from L1 to L{maxLevel}. Higher levels increase range and difficulty. Mastery shows your accuracy across the last {window} attempts. At {threshold}% you level up.',
   },
 } as const;
 

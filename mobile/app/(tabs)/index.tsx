@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from '../../src/ui/components/Card';
+import { ProgressExplainerCard } from '../../src/ui/components/ProgressExplainerCard';
 import { Screen } from '../../src/ui/components/Screen';
 import { useAppStore } from '../../src/state/use-app-store';
 import { clefLabel, localeTag, modeLabel, skillLabel, t } from '../../src/core/i18n/translator';
@@ -117,6 +118,7 @@ export default function DashboardScreen() {
             </View>
           );
         })}
+        <ProgressExplainerCard locale={locale} />
       </Card>
     </Screen>
   );
