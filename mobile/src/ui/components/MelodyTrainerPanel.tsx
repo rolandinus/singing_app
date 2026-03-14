@@ -144,7 +144,7 @@ function TappableStaff({
   const NOTE_START_X = STAFF_MARGIN_LEFT + 110;
   const availableWidth = SVG_STAFF_WIDTH - NOTE_START_X - STAFF_MARGIN_LEFT;
   const NOTE_SPACING = totalBeatSlots > 1 ? Math.min(availableWidth / (totalBeatSlots - 1), 180) : 0;
-  const TAP_HALF_WIDTH = 18;
+  const TAP_HALF_WIDTH = 22;
   const normalizedProgress = recordingProgress == null ? null : Math.max(0, Math.min(1, recordingProgress));
   const maxBeatIndex = Math.max(0, totalBeatSlots - 1);
   // Map progress to beat index space (0..totalBeatSlots), then clamp to rendered slots.
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
   bpmRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   bpmLabel: { fontSize: 13, color: '#334155', fontWeight: '600', flex: 1 },
   bpmButtons: { flexDirection: 'row', gap: 6 },
-  bpmBtn: { width: 36, height: 36, borderRadius: 8, borderWidth: 1, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' },
+  bpmBtn: { width: 44, height: 44, borderRadius: 8, borderWidth: 1, borderColor: '#cbd5e1', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8fafc' },
   bpmBtnText: { fontSize: 18, color: '#334155', fontWeight: '700', lineHeight: 22 },
   countInRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
   countInDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#e2e8f0' },
