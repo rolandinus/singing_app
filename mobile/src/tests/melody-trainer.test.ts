@@ -167,6 +167,7 @@ describe('SessionService melody trainer', () => {
 
   it('captureSingingAttempt fires count-in callbacks before capture', async () => {
     const beats: number[] = [];
+    const ticks: Array<{ accent: boolean; durationMs: number | undefined }> = [];
     const service = new SessionService(
       createMockStorage(),
       {
@@ -174,6 +175,7 @@ describe('SessionService melody trainer', () => {
         async playReferenceWithTarget() {},
         async playInterval() {},
         async playMelody() {},
+        async playMetronomeTick(accent, durationMs) { ticks.push({ accent: Boolean(accent), durationMs }); },
         async stop() {},
       },
       {
@@ -195,6 +197,9 @@ describe('SessionService melody trainer', () => {
     });
 
     expect(beats).toEqual([1, 2, 3, 4]);
+    expect(ticks).toHaveLength(4);
+    expect(ticks[0]).toEqual({ accent: true, durationMs: expect.any(Number) });
+    expect(ticks.slice(1).every((tick) => tick.accent === false)).toBe(true);
     expect(result).not.toBeNull();
   });
 

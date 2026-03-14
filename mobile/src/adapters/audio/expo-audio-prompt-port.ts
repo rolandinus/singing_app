@@ -165,6 +165,12 @@ export class ExpoAudioPromptPort {
     }
   }
 
+  async playMetronomeTick(accent = false, durationMs = 90): Promise<void> {
+    await this.stop();
+    await this.ensureAudioMode();
+    await this.playTone(accent ? 'C6' : 'C5', durationMs);
+  }
+
   async stop(): Promise<void> {
     // Increment the generation counter so any in-progress playTone call knows to abort.
     this.stopGeneration += 1;

@@ -154,6 +154,7 @@ export class SessionService {
     playInterval: (first: string, second: string) => Promise<void>;
     playMelody: (notes: string[]) => Promise<void>;
     playMelodyWithDurations?: (notes: Array<{ pitch: string; durationMs: number }>, gapMs: number) => Promise<void>;
+    playMetronomeTick?: (accent?: boolean, durationMs?: number) => Promise<void>;
     stop: () => Promise<void>;
   };
   private pitchCapturePort: {
@@ -177,6 +178,7 @@ export class SessionService {
     playInterval: (first: string, second: string) => Promise<void>;
     playMelody: (notes: string[]) => Promise<void>;
     playMelodyWithDurations?: (notes: Array<{ pitch: string; durationMs: number }>, gapMs: number) => Promise<void>;
+    playMetronomeTick?: (accent?: boolean, durationMs?: number) => Promise<void>;
     stop: () => Promise<void>;
   }, pitchCapturePort?: {
     capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
@@ -189,6 +191,7 @@ export class SessionService {
       async playReferenceWithTarget() {},
       async playInterval() {},
       async playMelody() {},
+      async playMetronomeTick() {},
       async stop() {},
     };
     this.pitchCapturePort = pitchCapturePort ?? {
@@ -334,9 +337,11 @@ export class SessionService {
 
       // Count-in phase: fire beat callbacks before capture starts.
       if (options.onCountInBeat) {
+        const tickDurationMs = Math.min(120, Math.max(60, Math.round(timing.noteDurationMs * 0.18)));
         for (let beat = 1; beat <= COUNT_IN_BEATS; beat += 1) {
           options.onCountInBeat(beat);
-          await new Promise<void>((resolve) => setTimeout(resolve, timing.noteDurationMs));
+          await this.audioPromptPort.playMetronomeTick?.(beat === 1, tickDurationMs);
+          await new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, timing.noteDurationMs - tickDurationMs)));
         }
       }
 
