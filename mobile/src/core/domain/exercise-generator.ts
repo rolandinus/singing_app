@@ -92,6 +92,25 @@ function generateIntervalPair(clef: Clef, level: number) {
   };
 }
 
+function qualifiedIntervalLabel(intervalStep: number, firstMidi: number, secondMidi: number): string {
+  const semitoneDist = Math.abs(secondMidi - firstMidi);
+  return INTERVAL_QUALITY_LABELS[semitoneDist] ?? INTERVAL_LABELS[intervalStep] ?? String(intervalStep);
+}
+
+function buildIntervalChoiceLabels(
+  choices: string[],
+  correctChoice: string,
+  correctLabel: string,
+): Record<string, string> {
+  return Object.fromEntries(
+    choices.map((choice) => {
+      const numeric = Number(choice);
+      const genericLabel = `${choice} - ${INTERVAL_LABELS[numeric] ?? choice}`;
+      return [choice, choice === correctChoice ? `${choice} - ${correctLabel}` : genericLabel];
+    }),
+  );
+}
+
 /** Return a random note duration: half note with 40% chance for first note, 25% for others. */
 function randomNoteDuration(isFirst: boolean): NoteType {
   const chanceForHalf = isFirst ? 0.4 : 0.25;
@@ -192,6 +211,8 @@ export class ExerciseGenerator {
 
   private generateIntervalVisual(clef: Clef, level: number): Exercise {
     const pair = generateIntervalPair(clef, level);
+    const intervalLabel = qualifiedIntervalLabel(pair.intervalStep, pair.firstMidi, pair.secondMidi);
+    const choices = buildDistractorChoices(String(pair.intervalStep), Object.keys(INTERVAL_LABELS).map(String), 4);
 
     return {
       id: createExerciseId('interval_visual'),
@@ -204,9 +225,12 @@ export class ExerciseGenerator {
         first: midiToScientific(pair.firstMidi),
         second: midiToScientific(pair.secondMidi),
       },
-      choices: buildDistractorChoices(String(pair.intervalStep), Object.keys(INTERVAL_LABELS).map(String), 4),
+      choices,
       expectedAnswer: { answer: String(pair.intervalStep) },
-      metadata: { label: INTERVAL_LABELS[pair.intervalStep] },
+      metadata: {
+        label: intervalLabel,
+        choiceLabels: buildIntervalChoiceLabels(choices, String(pair.intervalStep), intervalLabel),
+      },
     };
   }
 
@@ -233,6 +257,8 @@ export class ExerciseGenerator {
 
   private generateIntervalAural(clef: Clef, level: number): Exercise {
     const pair = generateIntervalPair(clef, level);
+    const intervalLabel = qualifiedIntervalLabel(pair.intervalStep, pair.firstMidi, pair.secondMidi);
+    const choices = buildDistractorChoices(String(pair.intervalStep), Object.keys(INTERVAL_LABELS).map(String), 4);
     return {
       id: createExerciseId('interval_aural'),
       family: 'aural',
@@ -244,9 +270,12 @@ export class ExerciseGenerator {
         first: midiToScientific(pair.firstMidi),
         second: midiToScientific(pair.secondMidi),
       },
-      choices: buildDistractorChoices(String(pair.intervalStep), Object.keys(INTERVAL_LABELS).map(String), 4),
+      choices,
       expectedAnswer: { answer: String(pair.intervalStep) },
-      metadata: { label: INTERVAL_LABELS[pair.intervalStep] },
+      metadata: {
+        label: intervalLabel,
+        choiceLabels: buildIntervalChoiceLabels(choices, String(pair.intervalStep), intervalLabel),
+      },
     };
   }
 
@@ -270,8 +299,7 @@ export class ExerciseGenerator {
 
   private generateSingInterval(clef: Clef, level: number): Exercise {
     const pair = generateIntervalPair(clef, level);
-    const semitoneDist = Math.abs(pair.secondMidi - pair.firstMidi);
-    const intervalLabel = INTERVAL_QUALITY_LABELS[semitoneDist] ?? INTERVAL_LABELS[pair.intervalStep] ?? String(pair.intervalStep);
+    const intervalLabel = qualifiedIntervalLabel(pair.intervalStep, pair.firstMidi, pair.secondMidi);
 
     return {
       id: createExerciseId('sing_interval'),

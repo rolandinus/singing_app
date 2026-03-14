@@ -486,6 +486,8 @@ function buildSubPrompt(exercise: Exercise, locale: 'de' | 'en'): string {
 
 function labelForChoice(skillKey: string, choice: string, metadata: Record<string, unknown>): string {
   if (skillKey === 'interval_visual' || skillKey === 'interval_aural') {
+    const choiceLabels = metadata.choiceLabels as Record<string, string> | undefined;
+    if (choiceLabels?.[choice]) return choiceLabels[choice];
     const n = Number(choice);
     return `${choice} - ${INTERVAL_LABELS[n] ?? choice}`;
   }

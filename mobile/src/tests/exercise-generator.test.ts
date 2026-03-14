@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { INTERVAL_QUALITY_LABELS } from '../core/config/curriculum';
 import { ExerciseGenerator } from '../core/domain/exercise-generator';
 
 describe('ExerciseGenerator', () => {
@@ -16,6 +17,9 @@ describe('ExerciseGenerator', () => {
     expect(ex.skillKey).toBe('interval_visual');
     expect(typeof (ex.prompt as any).first).toBe('string');
     expect(typeof (ex.prompt as any).second).toBe('string');
+    expect(typeof (ex.metadata as any).label).toBe('string');
+    expect(Object.values(INTERVAL_QUALITY_LABELS)).toContain((ex.metadata as any).label);
+    expect(typeof (ex.metadata as any).choiceLabels?.[(ex.expectedAnswer as any).answer]).toBe('string');
   });
 
   it('generates sing interval with intervalLabel and intervalStep in metadata', () => {
