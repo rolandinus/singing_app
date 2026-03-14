@@ -110,6 +110,8 @@ type StoreState = {
   melodyNoteResults: MelodyNoteResult[];
   /** 0..1 progress for active melody recording phase (null when not recording). */
   melodyRecordingProgress: number | null;
+  /** True right after a successful sing_note detection, while auto-advancing to next exercise. */
+  singNoteAutoAdvancePending: boolean;
   loading: {
     startGuided: boolean;
     startCustom: boolean;
@@ -187,6 +189,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
   melodyCountInBeat: null,
   melodyNoteResults: [],
   melodyRecordingProgress: null,
+  singNoteAutoAdvancePending: false,
   loading: {
     startGuided: false,
     startCustom: false,
@@ -244,6 +247,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         answerState: { selectedChoice: null, expectedChoice: null },
         summary: null,
         melodyRecordingProgress: null,
+        singNoteAutoAdvancePending: false,
       });
     } finally {
       set((state) => ({ loading: { ...state.loading, startGuided: false } }));
@@ -285,6 +289,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         answerState: { selectedChoice: null, expectedChoice: null },
         summary: null,
         melodyRecordingProgress: null,
+        singNoteAutoAdvancePending: false,
       });
     } finally {
       set((state) => ({ loading: { ...state.loading, startCustom: false } }));
@@ -352,6 +357,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         melodyNoteResults: [],
         singingNoteIndex: null,
         melodyRecordingProgress: null,
+        singNoteAutoAdvancePending: false,
       });
     }
   },
@@ -373,6 +379,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       singingNoteIndex: null,
       melodyCountInBeat: null,
       melodyRecordingProgress: null,
+      singNoteAutoAdvancePending: false,
       pitchDebug: {
         ...INITIAL_PITCH_DEBUG_STATE,
         timestampMs: Date.now(),
@@ -444,8 +451,33 @@ export const useAppStore = create<StoreState>((set, get) => ({
           melodyRecordingProgress: null,
         });
         get().refreshDashboard();
+      } else if (exercise?.skillKey === 'sing_note') {
+        // Single-note trainer: keep sampling note-duration windows until in-tune or safety limit.
+        const noteWindowMs = Math.max(500, Math.round((60 / get().melodyBpm) * 1000));
+        const outcome = await service.captureSingingAttempt({
+          continuousSingNote: true,
+          sampleDurationMs: noteWindowMs,
+          maxSingNoteWindows: 45,
+        });
+        if (!outcome) return;
+
+        set({
+          feedback: { text: outcome.feedback, isCorrect: outcome.evaluation.correct },
+          answerState: { selectedChoice: null, expectedChoice: null },
+          sessionMeta: service.getSessionMeta(),
+          singingNoteIndex: null,
+          singNoteAutoAdvancePending: outcome.evaluation.correct,
+        });
+        get().refreshDashboard();
+
+        if (outcome.evaluation.correct) {
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 700);
+          });
+          await get().nextExercise();
+        }
       } else {
-        // Generic singing (sing_note).
+        // Generic singing capture path.
         const outcome = await service.captureSingingAttempt();
         if (!outcome) return;
 
@@ -454,6 +486,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
           answerState: { selectedChoice: null, expectedChoice: null },
           sessionMeta: service.getSessionMeta(),
           singingNoteIndex: null,
+          singNoteAutoAdvancePending: false,
         });
         get().refreshDashboard();
       }
@@ -466,6 +499,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         singingNoteIndex: null,
         melodyCountInBeat: null,
         melodyRecordingProgress: null,
+        singNoteAutoAdvancePending: false,
       });
     } finally {
       timers.forEach(clearTimeout);
@@ -492,6 +526,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
           currentExercise: null,
           sessionMeta: { mode: 'guided', index: 0, total: 0 },
           answerState: { selectedChoice: null, expectedChoice: null },
+          singNoteAutoAdvancePending: false,
         });
         get().refreshDashboard();
         return;
@@ -506,6 +541,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         melodyCountInBeat: null,
         singingNoteIndex: null,
         melodyRecordingProgress: null,
+        singNoteAutoAdvancePending: false,
       });
     } finally {
       set((state) => ({ loading: { ...state.loading, nextExercise: false } }));
@@ -524,6 +560,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       singingNoteIndex: null,
       melodyRecordingProgress: null,
       summary: null,
+      singNoteAutoAdvancePending: false,
     });
     get().refreshDashboard();
   },
@@ -559,6 +596,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         currentExercise: null,
         sessionMeta: { mode: 'guided', index: 0, total: 0 },
         answerState: { selectedChoice: null, expectedChoice: null },
+        singNoteAutoAdvancePending: false,
       });
       logStoreDebug('state_updated_with_summary', {
         hasSummary: Boolean(get().summary),

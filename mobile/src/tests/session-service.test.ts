@@ -18,6 +18,10 @@ function createMockStorage() {
   };
 }
 
+function midiToFrequency(midi: number): number {
+  return 440 * (2 ** ((midi - 69) / 12));
+}
+
 describe('SessionService', () => {
   it('runs guided visual session end-to-end', async () => {
     const service = new SessionService(createMockStorage());
@@ -187,5 +191,66 @@ describe('SessionService', () => {
       expect(step.summary?.total).toBe(1);
       expect(step.summary?.correct).toBe(1);
     }
+  });
+
+  it('keeps sampling sing_note windows until the user is in tune', async () => {
+    let captureCount = 0;
+    let targetMidi = 60;
+
+    const service = new SessionService(
+      createMockStorage(),
+      {
+        async playNote() {},
+        async playReferenceWithTarget() {},
+        async playInterval() {},
+        async playMelody() {},
+        async stop() {},
+      },
+      {
+        async ensureMicrophonePermission() {},
+        async capturePitchSample() {
+          captureCount += 1;
+          if (captureCount === 1) {
+            const wrongMidi = targetMidi + 4;
+            return {
+              detectedFrequency: midiToFrequency(wrongMidi),
+              detectedMidi: wrongMidi,
+              noteName: null,
+            };
+          }
+          return {
+            detectedFrequency: midiToFrequency(targetMidi),
+            detectedMidi: targetMidi,
+            noteName: null,
+          };
+        },
+        async capturePitchContour() { return null; },
+        async stop() {},
+      },
+    );
+    await service.init();
+
+    const started = service.startCustomSession({
+      skillKey: 'sing_note',
+      clef: 'treble',
+      level: 1,
+      count: 1,
+    });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+
+    const exercise = service.getCurrentExercise();
+    expect(exercise?.skillKey).toBe('sing_note');
+    if (!exercise || exercise.skillKey !== 'sing_note') return;
+
+    targetMidi = Number((exercise.expectedAnswer as { targetMidi: number }).targetMidi);
+    const outcome = await service.captureSingingAttempt({
+      continuousSingNote: true,
+      sampleDurationMs: 700,
+      maxSingNoteWindows: 5,
+    });
+
+    expect(captureCount).toBe(2);
+    expect(outcome?.evaluation.correct).toBe(true);
   });
 });

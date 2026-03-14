@@ -30,6 +30,7 @@ describe('live singing feedback', () => {
       detectedNote: 'A4',
       targetIndex: 0,
       isOffTarget: true,
+      correctionDirection: 'down',
     });
   });
 
@@ -44,6 +45,7 @@ describe('live singing feedback', () => {
       detectedNote: 'E4',
       targetIndex: 1,
       isOffTarget: false,
+      correctionDirection: null,
     });
   });
 });

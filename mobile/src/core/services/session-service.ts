@@ -326,6 +326,9 @@ export class SessionService {
 
   async captureSingingAttempt(options: {
     bpm?: number;
+    sampleDurationMs?: number;
+    continuousSingNote?: boolean;
+    maxSingNoteWindows?: number;
     onCountInBeat?: (beat: number) => void;
     onNoteIndex?: (index: number) => void;
     onRecordingStarted?: () => void;
@@ -388,7 +391,40 @@ export class SessionService {
       return this.applyEvaluation(exercise, evaluation, contour, null, noteResults);
     }
 
-    const captured = await this.pitchCapturePort.capturePitchSample(2200);
+    if (exercise.skillKey === 'sing_note' && options.continuousSingNote) {
+      const windowDurationMs = Math.max(500, options.sampleDurationMs ?? 900);
+      const maxWindows = Math.max(1, options.maxSingNoteWindows ?? 45);
+      const toleranceCents = this.toleranceForLevel(exercise.level);
+
+      let lastCaptured: { detectedFrequency: number; detectedMidi: number; noteName: string | null } | null = null;
+      let lastEvaluation: EvaluationResult | null = null;
+
+      for (let i = 0; i < maxWindows; i += 1) {
+        const captured = await this.pitchCapturePort.capturePitchSample(windowDurationMs);
+        const evaluation = this.evaluator.evaluate(
+          exercise,
+          captured,
+          { toleranceCents },
+        );
+        lastCaptured = captured;
+        lastEvaluation = evaluation;
+
+        if (evaluation.correct) {
+          return this.applyEvaluation(exercise, evaluation, captured);
+        }
+      }
+
+      const fallbackEvaluation = lastEvaluation ?? this.evaluator.evaluate(
+        exercise,
+        null,
+        { toleranceCents },
+      );
+      return this.applyEvaluation(exercise, fallbackEvaluation, lastCaptured);
+    }
+
+    const captured = await this.pitchCapturePort.capturePitchSample(
+      Math.max(500, options.sampleDurationMs ?? 2200),
+    );
     const evaluation = this.evaluator.evaluate(
       exercise,
       captured,

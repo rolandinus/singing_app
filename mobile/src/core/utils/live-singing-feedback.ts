@@ -51,6 +51,7 @@ export function buildLiveSingingFeedback(input: {
   detectedNote: string | null;
   targetIndex: number | null;
   isOffTarget: boolean;
+  correctionDirection: 'up' | 'down' | null;
 } {
   const detectedNote = detectedScientificFromFrequency(input.frequency);
   const targetIndex = activeSingingTargetIndex(
@@ -62,10 +63,15 @@ export function buildLiveSingingFeedback(input: {
   const targetNote = targetIndex === null ? null : input.promptNotes[targetIndex] ?? null;
   const detectedMidi = detectedNote ? scientificToMidi(detectedNote) : null;
   const targetMidi = targetNote ? scientificToMidi(targetNote) : null;
+  const isOffTarget = detectedMidi !== null && targetMidi !== null && detectedMidi !== targetMidi;
+  const correctionDirection = isOffTarget
+    ? (detectedMidi < targetMidi ? 'up' : 'down')
+    : null;
 
   return {
     detectedNote,
     targetIndex,
-    isOffTarget: detectedMidi !== null && targetMidi !== null && detectedMidi !== targetMidi,
+    isOffTarget,
+    correctionDirection,
   };
 }

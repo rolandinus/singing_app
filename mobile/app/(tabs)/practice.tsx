@@ -81,6 +81,7 @@ export default function PracticeScreen() {
   const melodyCountInBeat = useAppStore((s) => s.melodyCountInBeat);
   const melodyNoteResults = useAppStore((s) => s.melodyNoteResults);
   const melodyRecordingProgress = useAppStore((s) => s.melodyRecordingProgress);
+  const singNoteAutoAdvancePending = useAppStore((s) => s.singNoteAutoAdvancePending);
   const captureSingingAttempt = useAppStore((s) => s.captureSingingAttempt);
   const singingNoteIndex = useAppStore((s) => s.singingNoteIndex);
   const pitchDebug = useAppStore((s) => s.pitchDebug);
@@ -102,7 +103,12 @@ export default function PracticeScreen() {
       singingNoteIndex,
       frequency: pitchDebug.frequency,
     })
-    : { detectedNote: null, targetIndex: null, isOffTarget: false };
+    : {
+      detectedNote: null,
+      targetIndex: null,
+      isOffTarget: false,
+      correctionDirection: null,
+    };
 
   React.useEffect(() => {
     if (summary) {
@@ -137,7 +143,7 @@ export default function PracticeScreen() {
   }
 
   const progressPercent = sessionMeta.total > 0 ? Math.round((sessionMeta.index / sessionMeta.total) * 100) : 0;
-  const canGoNext = Boolean(feedback.text);
+  const canGoNext = Boolean(feedback.text) && !singNoteAutoAdvancePending;
   const subPrompt = currentExercise ? buildSubPrompt(currentExercise, locale) : '';
   const sessionActive = sessionMeta.total > 0;
 
@@ -391,6 +397,7 @@ export default function PracticeScreen() {
                       highlightIndex={loading.captureSingingAttempt ? singingNoteIndex : null}
                       overlayNote={liveSingingFeedback.isOffTarget ? liveSingingFeedback.detectedNote : null}
                       overlayIndex={liveSingingFeedback.isOffTarget ? liveSingingFeedback.targetIndex : null}
+                      overlayDirection={liveSingingFeedback.isOffTarget ? liveSingingFeedback.correctionDirection : null}
                     />
                   ) : (
                     <Text style={{ fontSize: 28, textAlign: 'center', color: colors.textSecondary, marginVertical: 10 }}>
@@ -420,10 +427,10 @@ export default function PracticeScreen() {
                     <Pressable
                       style={[
                         { alignSelf: 'flex-start', borderRadius: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: colors.amber },
-                        loading.captureSingingAttempt && { opacity: 0.45 },
+                        (loading.captureSingingAttempt || singNoteAutoAdvancePending) && { opacity: 0.45 },
                       ]}
                       onPress={() => void captureSingingAttempt()}
-                      disabled={loading.captureSingingAttempt}
+                      disabled={loading.captureSingingAttempt || singNoteAutoAdvancePending}
                       accessibilityRole="button"
                     >
                       {loading.captureSingingAttempt
@@ -442,6 +449,10 @@ export default function PracticeScreen() {
                       <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t(locale, 'mic_debug_timeline_points')}: {formatDebugInteger(locale, pitchDebug.timelinePoints)}</Text>
                       <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t(locale, 'mic_debug_updated')}: {formatDebugTimestamp(locale, pitchDebug.timestampMs)}</Text>
                     </View>
+                  ) : null}
+
+                  {currentExercise.skillKey === 'sing_note' && singNoteAutoAdvancePending ? (
+                    <Text style={{ textAlign: 'center', fontSize: 72, lineHeight: 78, color: colors.success, fontWeight: '800' }}>✓</Text>
                   ) : null}
 
                   {feedback.text ? (
