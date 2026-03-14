@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Path, Text as SvgText } from 'react-native-svg';
-import { SVG_STAFF_HEIGHT, SVG_STAFF_WIDTH } from '../../core/config/constants';
+import { STAFF_MARGIN_LEFT, STAFF_MARGIN_TOP, LINE_SPACING, SVG_STAFF_HEIGHT, SVG_STAFF_WIDTH } from '../../core/config/constants';
 import { COUNT_IN_BEATS } from '../../core/services/session-service';
 import type { MelodyNoteResult } from '../../core/services/session-service';
 import { t, type TranslationKey } from '../../core/i18n/translator';
@@ -55,6 +55,10 @@ function getMelodyDurations(exercise: Exercise): NoteType[] {
   return getMelodyNoteObjects(exercise).map((n) => n.duration);
 }
 
+function noteBeats(duration: NoteType): number {
+  return duration === 'half' ? 2 : 1;
+}
+
 /** Staff with per-note tap-to-audition support and optional correctness overlay. */
 function TappableStaff({
   clef,
@@ -65,7 +69,9 @@ function TappableStaff({
   overlayIndex,
   overlayDuration,
   noteResults,
+  renderedNotes,
   onTapNote,
+  recordingProgress,
 }: {
   clef: Clef;
   notes: string[];
@@ -77,6 +83,7 @@ function TappableStaff({
   noteResults?: MelodyNoteResult[];
   renderedNotes?: Array<{ note: string; duration: NoteType; slotIndex: number; correct: boolean }>;
   onTapNote?: (note: string, index: number) => void;
+  recordingProgress?: number | null;
 }) {
   const renderedPitchNotes = renderedNotes ?? notes.map((note, index) => ({
     note,
@@ -84,14 +91,31 @@ function TappableStaff({
     slotIndex: index,
     correct: true,
   }));
+  const useDurationWeightedLayout = !renderedNotes && Boolean(durations?.length);
+  const durationBasedSlotIndices = useDurationWeightedLayout
+    ? (() => {
+      let cursor = 0;
+      return renderedPitchNotes.map((note) => {
+        const slot = cursor;
+        cursor += noteBeats(note.duration);
+        return slot;
+      });
+    })()
+    : [];
+  const totalBeatSlots = useDurationWeightedLayout
+    ? Math.max(1, renderedPitchNotes.reduce((sum, note) => sum + noteBeats(note.duration), 0))
+    : Math.max(notes.length, renderedPitchNotes.length);
+  const slotIndices = useDurationWeightedLayout
+    ? durationBasedSlotIndices
+    : renderedPitchNotes.map((note) => note.slotIndex);
   const noteNodes = buildNoteNodes(
     renderedPitchNotes.map((note) => note.note),
     clef,
     highlightIndex ?? null,
     renderedPitchNotes.map((note) => note.duration),
     {
-      layoutNoteCount: Math.max(notes.length, renderedPitchNotes.length),
-      slotIndices: renderedPitchNotes.map((note) => note.slotIndex),
+      layoutNoteCount: totalBeatSlots,
+      slotIndices,
       noteStyles: renderedNotes
         ? renderedPitchNotes.map((note) => ({
           fill: note.correct ? '#047857' : '#dc2626',
@@ -100,15 +124,15 @@ function TappableStaff({
         : undefined,
     },
   );
-  const overlayNodes = overlayNote && overlayIndex !== null
+  const overlayNodes = overlayNote && overlayIndex != null
     ? buildNoteNodes(
       [overlayNote],
       clef,
       null,
       [overlayDuration ?? 'quarter'],
       {
-        layoutNoteCount: Math.max(notes.length, overlayIndex + 1),
-        slotIndices: [overlayIndex],
+        layoutNoteCount: totalBeatSlots,
+        slotIndices: [slotIndices[overlayIndex] ?? overlayIndex],
         noteStyles: [{ fill: '#dc2626', stroke: '#dc2626', rx: 8, ry: 6 }],
       },
     )
@@ -117,12 +141,18 @@ function TappableStaff({
   const allNodes = [...staffNodes, ...noteNodes, ...overlayNodes];
   const tree = toReactNativeSvgTree(allNodes);
 
-  // Estimate the horizontal positions for each note for tap regions.
-  // The staff builder lays notes out starting around x=60 with ~40 px spacing.
-  const NOTE_START_X = 60;
-  const NOTE_SPACING = 40;
+  const NOTE_START_X = STAFF_MARGIN_LEFT + 110;
+  const availableWidth = SVG_STAFF_WIDTH - NOTE_START_X - STAFF_MARGIN_LEFT;
+  const NOTE_SPACING = totalBeatSlots > 1 ? Math.min(availableWidth / (totalBeatSlots - 1), 180) : 0;
   const TAP_HALF_WIDTH = 18;
-  const svgAspect = SVG_STAFF_WIDTH / SVG_STAFF_HEIGHT;
+  const normalizedProgress = recordingProgress == null ? null : Math.max(0, Math.min(1, recordingProgress));
+  const maxBeatIndex = Math.max(0, totalBeatSlots - 1);
+  // Map progress to beat index space (0..totalBeatSlots), then clamp to rendered slots.
+  // This keeps cursor beat boundaries aligned with note-highlight timing.
+  const cursorBeatPosition = normalizedProgress == null ? null : normalizedProgress * totalBeatSlots;
+  const cursorX = cursorBeatPosition == null ? null : NOTE_START_X + Math.min(cursorBeatPosition, maxBeatIndex) * NOTE_SPACING;
+  const cursorTopY = STAFF_MARGIN_TOP - 14;
+  const cursorBottomY = STAFF_MARGIN_TOP + (LINE_SPACING * 4) + 14;
 
   return (
     <View style={styles.staffWrapper}>
@@ -133,9 +163,17 @@ function TappableStaff({
       >
         {tree.map((node, index) => renderNode(node, String(index)))}
 
+        {/* Timing cursor while recording melody */}
+        {cursorX != null ? (
+          <G>
+            <Line x1={cursorX} y1={cursorTopY} x2={cursorX} y2={cursorBottomY} stroke="#f59e0b" strokeWidth={2} />
+            <Circle cx={cursorX} cy={cursorTopY} r={4} fill="#f59e0b" />
+          </G>
+        ) : null}
+
         {/* Correctness indicators above staff notes */}
         {noteResults && noteResults.map((result, i) => {
-          const cx = NOTE_START_X + i * NOTE_SPACING;
+          const cx = NOTE_START_X + (slotIndices[i] ?? i) * NOTE_SPACING;
           const cy = 8;
           const color = result.correct ? '#10b981' : '#f43f5e';
           return <Circle key={`result-${i}`} cx={cx} cy={cy} r={5} fill={color} />;
@@ -144,7 +182,8 @@ function TappableStaff({
 
       {/* Invisible tap targets overlaid on each note */}
       {onTapNote && notes.map((note, i) => {
-        const leftPct = ((NOTE_START_X + i * NOTE_SPACING - TAP_HALF_WIDTH) / SVG_STAFF_WIDTH) * 100;
+        const noteSlotIndex = slotIndices[i] ?? i;
+        const leftPct = ((NOTE_START_X + noteSlotIndex * NOTE_SPACING - TAP_HALF_WIDTH) / SVG_STAFF_WIDTH) * 100;
         const widthPct = ((TAP_HALF_WIDTH * 2) / SVG_STAFF_WIDTH) * 100;
         return (
           <Pressable
@@ -219,6 +258,7 @@ type Props = {
   bpm: number;
   countInBeat: number | null;
   noteResults: MelodyNoteResult[];
+  recordingProgress: number | null;
   singingNoteIndex: number | null;
   liveDetectedNote?: string | null;
   liveDetectedNoteIndex?: number | null;
@@ -240,6 +280,7 @@ export function MelodyTrainerPanel({
   bpm,
   countInBeat,
   noteResults,
+  recordingProgress,
   singingNoteIndex,
   liveDetectedNote,
   liveDetectedNoteIndex,
@@ -280,7 +321,8 @@ export function MelodyTrainerPanel({
         highlightIndex={isCapturing && !isCountingIn ? singingNoteIndex : null}
         overlayNote={liveDetectedNote}
         overlayIndex={liveDetectedNoteIndex}
-        overlayDuration={liveDetectedNoteIndex !== null ? (durations[liveDetectedNoteIndex] ?? 'quarter') : 'quarter'}
+        overlayDuration={liveDetectedNoteIndex != null ? (durations[liveDetectedNoteIndex] ?? 'quarter') : 'quarter'}
+        recordingProgress={isCapturing && !isCountingIn ? recordingProgress : null}
         onTapNote={!isCapturing ? onTapNote : undefined}
       />
 

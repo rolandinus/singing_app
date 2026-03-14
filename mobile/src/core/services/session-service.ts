@@ -158,6 +158,7 @@ export class SessionService {
     stop: () => Promise<void>;
   };
   private pitchCapturePort: {
+    ensureMicrophonePermission?: () => Promise<void>;
     capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
     capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{ detectedMidis: number[]; detectedFrequencies: number[] } | null>;
     setDebugListener?: (listener: ((snapshot: unknown) => void) | null) => void;
@@ -181,6 +182,7 @@ export class SessionService {
     playMetronomeTick?: (accent?: boolean, durationMs?: number) => Promise<void>;
     stop: () => Promise<void>;
   }, pitchCapturePort?: {
+    ensureMicrophonePermission?: () => Promise<void>;
     capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
     capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{ detectedMidis: number[]; detectedFrequencies: number[] } | null>;
     setDebugListener?: (listener: ((snapshot: unknown) => void) | null) => void;
@@ -195,6 +197,7 @@ export class SessionService {
       async stop() {},
     };
     this.pitchCapturePort = pitchCapturePort ?? {
+      async ensureMicrophonePermission() {},
       async capturePitchSample() { return null; },
       async capturePitchContour() { return null; },
       async stop() {},
@@ -321,10 +324,16 @@ export class SessionService {
     }
   }
 
-  async captureSingingAttempt(options: { bpm?: number; onCountInBeat?: (beat: number) => void; onNoteIndex?: (index: number) => void } = {}) {
+  async captureSingingAttempt(options: {
+    bpm?: number;
+    onCountInBeat?: (beat: number) => void;
+    onNoteIndex?: (index: number) => void;
+    onRecordingStarted?: () => void;
+  } = {}) {
     const exercise = this.getCurrentExercise();
     if (!exercise || exercise.family !== 'singing') return null;
     if (this.currentEvaluation?.correct) return null;
+    await this.pitchCapturePort.ensureMicrophonePermission?.();
 
     if (exercise.skillKey === 'sing_melody') {
       const targetMidis = Array.isArray((exercise.expectedAnswer as any).targetMidis)
@@ -347,6 +356,7 @@ export class SessionService {
 
       // Launch note-index callbacks at the start of each note's beat slot.
       const noteTimers: ReturnType<typeof setTimeout>[] = [];
+      options.onRecordingStarted?.();
       if (options.onNoteIndex) {
         let accumulatedBeats = 0;
         for (let i = 0; i < melodyNoteObjects.length; i += 1) {

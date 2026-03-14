@@ -168,6 +168,7 @@ describe('SessionService melody trainer', () => {
   it('captureSingingAttempt fires count-in callbacks before capture', async () => {
     const beats: number[] = [];
     const ticks: Array<{ accent: boolean; durationMs: number | undefined }> = [];
+    const callOrder: string[] = [];
     const service = new SessionService(
       createMockStorage(),
       {
@@ -175,12 +176,19 @@ describe('SessionService melody trainer', () => {
         async playReferenceWithTarget() {},
         async playInterval() {},
         async playMelody() {},
-        async playMetronomeTick(accent, durationMs) { ticks.push({ accent: Boolean(accent), durationMs }); },
+        async playMetronomeTick(accent, durationMs) {
+          callOrder.push('count_in_tick');
+          ticks.push({ accent: Boolean(accent), durationMs });
+        },
         async stop() {},
       },
       {
+        async ensureMicrophonePermission() {
+          callOrder.push('permission_preflight');
+        },
         async capturePitchSample() { return null; },
         async capturePitchContour(durationMs, segmentMs) {
+          callOrder.push('capture_started');
           return { detectedMidis: [60, 62, 64], detectedFrequencies: [262, 294, 330] };
         },
         async stop() {},
@@ -200,6 +208,9 @@ describe('SessionService melody trainer', () => {
     expect(ticks).toHaveLength(4);
     expect(ticks[0]).toEqual({ accent: true, durationMs: expect.any(Number) });
     expect(ticks.slice(1).every((tick) => tick.accent === false)).toBe(true);
+    expect(callOrder[0]).toBe('permission_preflight');
+    expect(callOrder.indexOf('count_in_tick')).toBeGreaterThan(callOrder.indexOf('permission_preflight'));
+    expect(callOrder.indexOf('capture_started')).toBeGreaterThan(callOrder.indexOf('count_in_tick'));
     expect(result).not.toBeNull();
   });
 

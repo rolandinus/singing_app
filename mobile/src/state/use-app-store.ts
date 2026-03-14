@@ -1,8 +1,14 @@
 import { create } from 'zustand';
 import { DEFAULT_SETTINGS, SKILL_DEFINITIONS } from '../core/config/curriculum';
 import { DEFAULT_MELODY_OPTIONS } from '../core/domain/exercise-generator';
-import { SessionService, DEFAULT_MELODY_BPM, COUNT_IN_BEATS, type MelodyNoteResult } from '../core/services/session-service';
-import type { AppSettings, Clef, Exercise, ExerciseFamily, MelodyOptions, SessionRecord, SessionSummary, SkillKey } from '../core/types';
+import {
+  SessionService,
+  buildMelodyTimingModel,
+  DEFAULT_MELODY_BPM,
+  COUNT_IN_BEATS,
+  type MelodyNoteResult,
+} from '../core/services/session-service';
+import type { AppSettings, Clef, Exercise, ExerciseFamily, MelodyOptions, NoteType, SessionRecord, SessionSummary, SkillKey } from '../core/types';
 import { AsyncStoragePort } from '../adapters/storage/async-storage-port';
 import { ExpoAudioPromptPort } from '../adapters/audio/expo-audio-prompt-port';
 import { ExpoPitchCapturePort, type PitchCaptureDebugSnapshot } from '../adapters/pitch/expo-pitch-capture-port';
@@ -37,6 +43,23 @@ const INITIAL_PITCH_DEBUG_STATE: PitchDebugState = {
   uri: null,
   message: '',
 };
+
+function noteBeats(duration: NoteType): number {
+  return duration === 'half' ? 2 : 1;
+}
+
+function totalMelodyBeats(exercise: Exercise | null): number {
+  if (!exercise || exercise.skillKey !== 'sing_melody') return 1;
+  if (!Array.isArray(exercise.prompt.notes)) return 1;
+  const beats = (exercise.prompt.notes as Array<unknown>).reduce<number>((sum, noteObj) => {
+    if (noteObj && typeof noteObj === 'object' && 'duration' in noteObj) {
+      const duration = (noteObj as { duration?: unknown }).duration;
+      if (duration === 'half') return sum + noteBeats('half');
+    }
+    return sum + noteBeats('quarter');
+  }, 0);
+  return Math.max(1, beats);
+}
 
 function mergePitchDebugState(previous: PitchDebugState, snapshot: PitchCaptureDebugSnapshot): PitchDebugState {
   const next: PitchDebugState = {
@@ -82,6 +105,8 @@ type StoreState = {
   melodyCountInBeat: number | null;
   /** Per-note correctness results after a melody attempt. */
   melodyNoteResults: MelodyNoteResult[];
+  /** 0..1 progress for active melody recording phase (null when not recording). */
+  melodyRecordingProgress: number | null;
   loading: {
     startGuided: boolean;
     startCustom: boolean;
@@ -149,6 +174,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
   melodyBpm: DEFAULT_MELODY_BPM,
   melodyCountInBeat: null,
   melodyNoteResults: [],
+  melodyRecordingProgress: null,
   loading: {
     startGuided: false,
     startCustom: false,
@@ -201,6 +227,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         feedback: { text: '', isCorrect: false },
         answerState: { selectedChoice: null, expectedChoice: null },
         summary: null,
+        melodyRecordingProgress: null,
       });
     } finally {
       set((state) => ({ loading: { ...state.loading, startGuided: false } }));
@@ -237,6 +264,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         feedback: { text: '', isCorrect: false },
         answerState: { selectedChoice: null, expectedChoice: null },
         summary: null,
+        melodyRecordingProgress: null,
       });
     } finally {
       set((state) => ({ loading: { ...state.loading, startCustom: false } }));
@@ -303,6 +331,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         answerState: { selectedChoice: null, expectedChoice: null },
         melodyNoteResults: [],
         singingNoteIndex: null,
+        melodyRecordingProgress: null,
       });
     }
   },
@@ -323,6 +352,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       loading: { ...state.loading, captureSingingAttempt: true },
       singingNoteIndex: null,
       melodyCountInBeat: null,
+      melodyRecordingProgress: null,
       pitchDebug: {
         ...INITIAL_PITCH_DEBUG_STATE,
         timestampMs: Date.now(),
@@ -332,6 +362,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
 
     const exercise = get().currentExercise;
     const timers: ReturnType<typeof setTimeout>[] = [];
+    let recordingProgressInterval: ReturnType<typeof setInterval> | null = null;
 
     try {
       if (exercise?.skillKey === 'sing_interval') {
@@ -351,12 +382,28 @@ export const useAppStore = create<StoreState>((set, get) => ({
         get().refreshDashboard();
       } else if (exercise?.skillKey === 'sing_melody') {
         const bpm = get().melodyBpm;
+        const beats = totalMelodyBeats(exercise);
+        const timing = buildMelodyTimingModel(bpm, beats);
+        const visualDurationMs = beats * timing.noteDurationMs;
 
         // Clear previous note results.
         set({ melodyNoteResults: [] });
 
         const outcome = await service.captureSingingAttempt({
           bpm,
+          onRecordingStarted: () => {
+            const recordingStartedAt = Date.now();
+            set({ melodyRecordingProgress: 0 });
+            recordingProgressInterval = setInterval(() => {
+              const elapsed = Date.now() - recordingStartedAt;
+              const progress = Math.max(0, Math.min(1, elapsed / visualDurationMs));
+              set({ melodyRecordingProgress: progress });
+              if (progress >= 1 && recordingProgressInterval) {
+                clearInterval(recordingProgressInterval);
+                recordingProgressInterval = null;
+              }
+            }, 50);
+          },
           onCountInBeat: (beat) => {
             set({ melodyCountInBeat: beat });
           },
@@ -374,6 +421,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
           singingNoteIndex: null,
           melodyCountInBeat: null,
           melodyNoteResults: outcome.noteResults ?? [],
+          melodyRecordingProgress: null,
         });
         get().refreshDashboard();
       } else {
@@ -389,9 +437,25 @@ export const useAppStore = create<StoreState>((set, get) => ({
         });
         get().refreshDashboard();
       }
+    } catch (error) {
+      const message = error instanceof Error && error.message
+        ? error.message
+        : 'Aufnahme fehlgeschlagen.';
+      set({
+        feedback: { text: message, isCorrect: false },
+        singingNoteIndex: null,
+        melodyCountInBeat: null,
+        melodyRecordingProgress: null,
+      });
     } finally {
       timers.forEach(clearTimeout);
-      set((state) => ({ loading: { ...state.loading, captureSingingAttempt: false }, singingNoteIndex: null, melodyCountInBeat: null }));
+      if (recordingProgressInterval) clearInterval(recordingProgressInterval);
+      set((state) => ({
+        loading: { ...state.loading, captureSingingAttempt: false },
+        singingNoteIndex: null,
+        melodyCountInBeat: null,
+        melodyRecordingProgress: null,
+      }));
     }
   },
 
@@ -421,6 +485,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         melodyNoteResults: [],
         melodyCountInBeat: null,
         singingNoteIndex: null,
+        melodyRecordingProgress: null,
       });
     } finally {
       set((state) => ({ loading: { ...state.loading, nextExercise: false } }));
@@ -437,6 +502,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       melodyNoteResults: [],
       melodyCountInBeat: null,
       singingNoteIndex: null,
+      melodyRecordingProgress: null,
       summary: null,
     });
     get().refreshDashboard();

@@ -94,6 +94,29 @@ export class ExpoPitchCapturePort {
     this.emitDebug({ phase: 'request_permission', message: 'permission_granted' });
   }
 
+  /**
+   * Ensure microphone permission has been granted before a singing capture flow starts.
+   * On web this triggers getUserMedia once and immediately closes the stream.
+   */
+  async ensureMicrophonePermission(): Promise<void> {
+    if (Platform.OS === 'web') {
+      this.emitDebug({ phase: 'request_permission', message: 'checking_permissions' });
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+      } catch {
+        this.emitDebug({ phase: 'error', message: 'microphone_permission_denied' });
+        throw new Error('Mikrofonberechtigung wurde nicht erteilt.');
+      }
+      this.emitDebug({ phase: 'request_permission', message: 'permission_granted' });
+      return;
+    }
+
+    await this.ensurePermissions();
+  }
+
   private async configureAudioModeForRecording() {
     await setAudioModeAsync({
       allowsRecording: true,

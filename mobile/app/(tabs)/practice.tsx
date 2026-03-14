@@ -15,6 +15,16 @@ import { Stepper } from '../../src/ui/components/Stepper';
 
 const CUSTOM_FAMILIES: ExerciseFamily[] = ['visual', 'aural', 'singing'];
 
+const SKILL_LEVEL_DETAIL_PREFIX: Record<SkillKey, string> = {
+  note_naming: 'level_detail_note_naming',
+  interval_visual: 'level_detail_interval_id',
+  interval_aural: 'level_detail_interval_id',
+  rhythm_id: 'level_detail_rhythm',
+  sing_note: 'level_detail_sing_note',
+  sing_interval: 'level_detail_sing_interval',
+  sing_melody: 'level_detail_sing_melody',
+};
+
 function logEndSessionDebug(stage: string, details: Record<string, unknown> = {}) {
   console.log(`[practice:end-session] ${stage}`, details);
 }
@@ -68,6 +78,7 @@ export default function PracticeScreen() {
   const melodyBpm = useAppStore((s) => s.melodyBpm);
   const melodyCountInBeat = useAppStore((s) => s.melodyCountInBeat);
   const melodyNoteResults = useAppStore((s) => s.melodyNoteResults);
+  const melodyRecordingProgress = useAppStore((s) => s.melodyRecordingProgress);
   const captureSingingAttempt = useAppStore((s) => s.captureSingingAttempt);
   const singingNoteIndex = useAppStore((s) => s.singingNoteIndex);
   const pitchDebug = useAppStore((s) => s.pitchDebug);
@@ -199,6 +210,12 @@ export default function PracticeScreen() {
             </View>
           </View>
 
+          <View style={styles.levelDetailPanel}>
+            <Text style={styles.levelDetailText}>
+              {t(locale, `${SKILL_LEVEL_DETAIL_PREFIX[selectedSkill]}_${selectedLevel}` as TranslationKey)}
+            </Text>
+          </View>
+
           {selectedSkill === 'sing_melody' ? (
             <View style={styles.melodyOptionsPanel}>
               <Text style={styles.melodyOptionsTitle}>{t(locale, 'melody_options_title')}</Text>
@@ -284,6 +301,7 @@ export default function PracticeScreen() {
                   bpm={melodyBpm}
                   countInBeat={melodyCountInBeat}
                   noteResults={melodyNoteResults}
+                  recordingProgress={melodyRecordingProgress}
                   singingNoteIndex={singingNoteIndex}
                   liveDetectedNote={liveSingingFeedback.isOffTarget ? liveSingingFeedback.detectedNote : null}
                   liveDetectedNoteIndex={liveSingingFeedback.isOffTarget ? liveSingingFeedback.targetIndex : null}
@@ -563,6 +581,8 @@ const styles = StyleSheet.create({
   disabledButton: { opacity: 0.45 },
   secondaryButtonText: { color: '#334155', fontWeight: '600' },
   muted: { color: '#64748b' },
+  levelDetailPanel: { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, backgroundColor: '#f8fafc', padding: 10 },
+  levelDetailText: { color: '#475569', fontSize: 13, lineHeight: 18 },
   melodyOptionsPanel: { borderWidth: 1, borderColor: '#bfdbfe', borderRadius: 10, backgroundColor: '#eff6ff', padding: 12, gap: 8 },
   melodyOptionsTitle: { fontSize: 14, fontWeight: '700', color: '#1e40af' },
   melodyOptionsError: { fontSize: 12, color: '#be123c', fontWeight: '600' },
