@@ -20,7 +20,7 @@ describe('buildMelodyTimingModel', () => {
     expect(model.bpm).toBe(60);
   });
 
-  it('computes capture duration as noteCount * noteDuration + 500 buffer', () => {
+  it('computes capture duration as totalBeats * noteDuration + 500 buffer', () => {
     const model = buildMelodyTimingModel(60, 4);
     expect(model.captureDurationMs).toBe(4 * 1000 + 500);
   });
@@ -281,9 +281,10 @@ describe('SessionService melody trainer', () => {
     service.startCustomSession({ skillKey: 'sing_melody', clef: 'treble', level: 1, count: 1 });
 
     const exercise = service.getCurrentExercise();
-    const notes = Array.isArray((exercise?.prompt as any)?.notes) ? (exercise?.prompt as any).notes as string[] : [];
+    const rawNotes = Array.isArray((exercise?.prompt as any)?.notes) ? (exercise?.prompt as any).notes as Array<{ pitch: string; duration: string }> : [];
+    const pitches = rawNotes.map((n) => (n && typeof n === 'object' && 'pitch' in n ? n.pitch : String(n)));
 
     await service.playMelodyWithTiming(200);
-    expect(playedNotes).toEqual(notes);
+    expect(playedNotes).toEqual(pitches);
   });
 });

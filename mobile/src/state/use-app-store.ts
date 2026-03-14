@@ -111,6 +111,8 @@ type StoreState = {
   /** Set the BPM for melody trainer. */
   setMelodyBpm: (bpm: number) => void;
   nextExercise: () => Promise<void>;
+  /** Discard the active session immediately without saving results or showing a summary. */
+  abortSession: () => void;
   endSession: () => Promise<void>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<void>;
   setSelectedFamily: (value: ExerciseFamily) => void;
@@ -170,6 +172,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
     set({
       bootstrapped: true,
       settings,
+      melodyBpm: settings.bpm,
       recentSessions: service.getRecentSessions(),
       skillRows: service.buildSkillRows(),
       selectedClef: clefs.includes(settings.defaultClef) ? settings.defaultClef : clefs[0],
@@ -309,7 +312,9 @@ export const useAppStore = create<StoreState>((set, get) => ({
   },
 
   setMelodyBpm(bpm: number) {
-    set({ melodyBpm: Math.max(40, Math.min(200, bpm)) });
+    const clamped = Math.max(40, Math.min(200, bpm));
+    set({ melodyBpm: clamped });
+    void service.saveSettings({ bpm: clamped });
   },
 
   async captureSingingAttempt() {
@@ -422,6 +427,21 @@ export const useAppStore = create<StoreState>((set, get) => ({
     }
   },
 
+  abortSession() {
+    service.abortSession();
+    set({
+      currentExercise: null,
+      sessionMeta: { mode: 'guided', index: 0, total: 0 },
+      feedback: { text: '', isCorrect: false },
+      answerState: { selectedChoice: null, expectedChoice: null },
+      melodyNoteResults: [],
+      melodyCountInBeat: null,
+      singingNoteIndex: null,
+      summary: null,
+    });
+    get().refreshDashboard();
+  },
+
   async endSession() {
     if (get().loading.endSession) {
       logStoreDebug('skipped_already_loading');
@@ -473,7 +493,11 @@ export const useAppStore = create<StoreState>((set, get) => ({
     set((state) => ({ loading: { ...state.loading, saveSettings: true } }));
     try {
       const settings = await service.saveSettings(partial);
-      set({ settings });
+      const next: Partial<StoreState> = { settings };
+      if (partial.bpm !== undefined) {
+        next.melodyBpm = settings.bpm;
+      }
+      set(next);
       get().refreshDashboard();
     } finally {
       set((state) => ({ loading: { ...state.loading, saveSettings: false } }));

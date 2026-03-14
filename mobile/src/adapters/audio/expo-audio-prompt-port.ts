@@ -111,6 +111,8 @@ async function waitForPlayerCompletion(player: AudioPlayer, expectedDurationMs: 
 export class ExpoAudioPromptPort {
   private static configured = false;
   private activePlayer: AudioPlayer | null = null;
+  /** Incremented on every stop() call; playTone captures the value at start and aborts if it changes. */
+  private stopGeneration = 0;
 
   private async ensureAudioMode() {
     if (ExpoAudioPromptPort.configured) {
@@ -128,11 +130,15 @@ export class ExpoAudioPromptPort {
     ExpoAudioPromptPort.configured = true;
   }
 
-  private async playTone(note: string) {
+  private async playTone(note: string, durationMs = 650): Promise<boolean> {
+    const generation = this.stopGeneration;
     const midi = scientificToMidi(note);
     const frequency = midiToFrequency(midi);
-    const durationMs = 650;
     const uri = buildSineWaveWavDataUri(frequency, durationMs);
+
+    // Abort immediately if stop() was called since this playback was requested.
+    if (generation !== this.stopGeneration) return false;
+
     const player = createAudioPlayer({ uri });
     this.activePlayer = player;
     player.play();
@@ -140,28 +146,38 @@ export class ExpoAudioPromptPort {
     try {
       player.remove();
     } catch {}
-    this.activePlayer = null;
+    if (this.activePlayer === player) {
+      this.activePlayer = null;
+    }
+    // Return false if a stop() was issued while this tone was playing.
+    return generation === this.stopGeneration;
   }
 
   async playInterval(first: string, second: string): Promise<void> {
     await this.stop();
     await this.ensureAudioMode();
-    await this.playTone(first);
+    const gen = this.stopGeneration;
+    const ok = await this.playTone(first);
+    if (!ok) return;
     await new Promise((resolve) => setTimeout(resolve, 120));
+    if (this.stopGeneration !== gen) return;
     await this.playTone(second);
   }
 
-  async playNote(note: string): Promise<void> {
+  async playNote(note: string, durationMs?: number): Promise<void> {
     await this.stop();
     await this.ensureAudioMode();
-    await this.playTone(note);
+    await this.playTone(note, durationMs);
   }
 
   async playReferenceWithTarget(reference: string, target: string): Promise<void> {
     await this.stop();
     await this.ensureAudioMode();
-    await this.playTone(reference);
+    const gen = this.stopGeneration;
+    const ok = await this.playTone(reference);
+    if (!ok) return;
     await new Promise((resolve) => setTimeout(resolve, 220));
+    if (this.stopGeneration !== gen) return;
     await this.playTone(target);
   }
 
@@ -169,22 +185,51 @@ export class ExpoAudioPromptPort {
     await this.stop();
     await this.ensureAudioMode();
     const sequence = Array.isArray(notes) ? notes : [];
+    const gen = this.stopGeneration;
 
     for (let i = 0; i < sequence.length; i += 1) {
-      await this.playTone(String(sequence[i]));
+      if (this.stopGeneration !== gen) return;
+      const ok = await this.playTone(String(sequence[i]));
+      if (!ok) return;
       if (i < sequence.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 140));
+        // Check again after the gap in case stop() was called during the pause.
+        if (this.stopGeneration !== gen) return;
+      }
+    }
+  }
+
+  /**
+   * Play a melody with per-note durations and a configurable gap between notes.
+   * Respects stop() cancellation between every note and every gap.
+   */
+  async playMelodyWithDurations(notes: Array<{ pitch: string; durationMs: number }>, gapMs: number): Promise<void> {
+    await this.stop();
+    await this.ensureAudioMode();
+    const gen = this.stopGeneration;
+
+    for (let i = 0; i < notes.length; i += 1) {
+      if (this.stopGeneration !== gen) return;
+      const noteObj = notes[i];
+      if (!noteObj) continue;
+      const ok = await this.playTone(noteObj.pitch, noteObj.durationMs);
+      if (!ok) return;
+      if (i < notes.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, gapMs));
+        // Check again after the gap in case stop() was called during the pause.
+        if (this.stopGeneration !== gen) return;
       }
     }
   }
 
   async stop(): Promise<void> {
-    if (!this.activePlayer) {
-      return;
-    }
+    // Increment the generation counter so any in-progress playTone call knows to abort.
+    this.stopGeneration += 1;
 
     const player = this.activePlayer;
     this.activePlayer = null;
+
+    if (!player) return;
 
     try {
       player.pause();

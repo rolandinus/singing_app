@@ -8,7 +8,9 @@ import type {
   Clef,
   EvaluationResult,
   Exercise,
+  MelodyNote,
   MelodyOptions,
+  NoteType,
   ProgressRecord,
   SessionRecord,
   SessionSummary,
@@ -17,6 +19,29 @@ import type {
 
 function createSessionId(): string {
   return `session-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+}
+
+/** Parse MelodyNote array from a sing_melody exercise prompt (backwards-compatible). */
+function getMelodyNoteObjects(exercise: Exercise): MelodyNote[] {
+  if (exercise.skillKey !== 'sing_melody') return [];
+  const notes = (exercise.prompt as Record<string, unknown>).notes;
+  if (!Array.isArray(notes)) return [];
+  return (notes as unknown[]).map((n) => {
+    if (n && typeof n === 'object' && 'pitch' in n && 'duration' in n) {
+      return n as MelodyNote;
+    }
+    return { pitch: String(n), duration: 'quarter' as NoteType };
+  });
+}
+
+/** Returns the number of quarter-note beats a single note occupies. */
+function noteBeats(duration: NoteType): number {
+  return duration === 'half' ? 2 : 1;
+}
+
+/** Returns the total number of quarter-note beats for a melody. */
+function totalMelodyBeats(notes: MelodyNote[]): number {
+  return notes.reduce((sum, n) => sum + noteBeats(n.duration), 0);
 }
 
 function logServiceDebug(stage: string, details: Record<string, unknown> = {}) {
@@ -71,13 +96,19 @@ export function computeMelodyNoteResults(
   });
 }
 
-/** Build a timing model for a given BPM (quarter-note = one melody note). */
-export function buildMelodyTimingModel(bpm: number, noteCount: number): MelodyTimingModel {
+/**
+ * Build a timing model for a given BPM.
+ * One quarter note = one beat = noteDurationMs.
+ * @param bpm - Tempo in beats per minute.
+ * @param totalBeats - Total number of quarter-note beats in the melody
+ *   (half notes count as 2, quarter notes as 1).
+ */
+export function buildMelodyTimingModel(bpm: number, totalBeats: number): MelodyTimingModel {
   const safeBpm = Math.max(40, Math.min(200, bpm));
   const noteDurationMs = Math.round((60 / safeBpm) * 1000);
   const gapMs = Math.round(noteDurationMs * 0.15);
   const segmentMs = Math.round(noteDurationMs * 0.9);
-  const captureDurationMs = noteCount * noteDurationMs + 500;
+  const captureDurationMs = totalBeats * noteDurationMs + 500;
   return { bpm: safeBpm, noteDurationMs, gapMs, segmentMs, captureDurationMs };
 }
 
@@ -118,10 +149,11 @@ export class SessionService {
   private planner = new SessionPlanner();
 
   private audioPromptPort: {
-    playNote: (note: string) => Promise<void>;
+    playNote: (note: string, durationMs?: number) => Promise<void>;
     playReferenceWithTarget: (reference: string, target: string) => Promise<void>;
     playInterval: (first: string, second: string) => Promise<void>;
     playMelody: (notes: string[]) => Promise<void>;
+    playMelodyWithDurations?: (notes: Array<{ pitch: string; durationMs: number }>, gapMs: number) => Promise<void>;
     stop: () => Promise<void>;
   };
   private pitchCapturePort: {
@@ -140,10 +172,11 @@ export class SessionService {
     saveSession: (session: SessionRecord) => Promise<SessionRecord>;
     getRecentSessions: (limit?: number) => Promise<SessionRecord[]>;
   }, audioPromptPort?: {
-    playNote: (note: string) => Promise<void>;
+    playNote: (note: string, durationMs?: number) => Promise<void>;
     playReferenceWithTarget: (reference: string, target: string) => Promise<void>;
     playInterval: (first: string, second: string) => Promise<void>;
     playMelody: (notes: string[]) => Promise<void>;
+    playMelodyWithDurations?: (notes: Array<{ pitch: string; durationMs: number }>, gapMs: number) => Promise<void>;
     stop: () => Promise<void>;
   }, pitchCapturePort?: {
     capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
@@ -280,8 +313,8 @@ export class SessionService {
     }
 
     if (exercise.skillKey === 'sing_melody') {
-      const notes = Array.isArray((exercise.prompt as any).notes) ? ((exercise.prompt as any).notes as string[]) : [];
-      await this.audioPromptPort.playMelody(notes.map(String));
+      const melodyNotes = getMelodyNoteObjects(exercise);
+      await this.audioPromptPort.playMelody(melodyNotes.map((n) => n.pitch));
     }
   }
 
@@ -294,9 +327,10 @@ export class SessionService {
       const targetMidis = Array.isArray((exercise.expectedAnswer as any).targetMidis)
         ? ((exercise.expectedAnswer as any).targetMidis as number[])
         : [];
-      const noteCount = Math.max(1, targetMidis.length);
+      const melodyNoteObjects = getMelodyNoteObjects(exercise);
+      const beats = Math.max(1, totalMelodyBeats(melodyNoteObjects));
       const toleranceCents = this.toleranceForLevel(exercise.level);
-      const timing = buildMelodyTimingModel(options.bpm ?? DEFAULT_MELODY_BPM, noteCount);
+      const timing = buildMelodyTimingModel(options.bpm ?? DEFAULT_MELODY_BPM, beats);
 
       // Count-in phase: fire beat callbacks before capture starts.
       if (options.onCountInBeat) {
@@ -306,12 +340,14 @@ export class SessionService {
         }
       }
 
-      // Launch note-index callbacks while capture runs concurrently.
+      // Launch note-index callbacks at the start of each note's beat slot.
       const noteTimers: ReturnType<typeof setTimeout>[] = [];
       if (options.onNoteIndex) {
-        for (let i = 0; i < noteCount; i += 1) {
-          const delay = i * timing.noteDurationMs;
+        let accumulatedBeats = 0;
+        for (let i = 0; i < melodyNoteObjects.length; i += 1) {
+          const delay = accumulatedBeats * timing.noteDurationMs;
           noteTimers.push(setTimeout(() => options.onNoteIndex!(i), delay));
+          accumulatedBeats += noteBeats(melodyNoteObjects[i]?.duration ?? 'quarter');
         }
       }
 
@@ -390,19 +426,34 @@ export class SessionService {
   async playMelodyWithTiming(bpm: number): Promise<void> {
     const exercise = this.getCurrentExercise();
     if (!exercise || exercise.skillKey !== 'sing_melody') return;
-    const notes = Array.isArray((exercise.prompt as any).notes) ? ((exercise.prompt as any).notes as string[]) : [];
-    if (notes.length === 0) return;
+    const melodyNoteObjects = getMelodyNoteObjects(exercise);
+    if (melodyNoteObjects.length === 0) return;
 
-    await this.audioPromptPort.stop();
+    const beats = Math.max(1, totalMelodyBeats(melodyNoteObjects));
+    const timing = buildMelodyTimingModel(bpm, beats);
 
-    const timing = buildMelodyTimingModel(bpm, notes.length);
-    // Use the audio port's melody method which handles sequencing.
-    // We pass a custom gap via the playMelody interface which uses fixed 140 ms gaps.
-    // For BPM-aware gaps we drive notes manually via playNote + gap.
-    for (let i = 0; i < notes.length; i += 1) {
-      await this.audioPromptPort.playNote(String(notes[i]));
-      if (i < notes.length - 1) {
-        await new Promise<void>((resolve) => setTimeout(resolve, timing.gapMs));
+    // Build the per-note duration list for the audio port.
+    // Half notes play for 2x the quarter-note duration; quarter notes play for 1x.
+    const notesWithDurations = melodyNoteObjects
+      .filter((n): n is NonNullable<typeof n> => Boolean(n))
+      .map((noteObj) => ({
+        pitch: noteObj.pitch,
+        durationMs: noteBeats(noteObj.duration) * timing.noteDurationMs - timing.gapMs,
+      }));
+
+    // Use the cancellation-aware playMelodyWithDurations when available; fall back
+    // to the simpler playNote loop for audio ports that don't support it (e.g. in tests).
+    if (this.audioPromptPort.playMelodyWithDurations) {
+      await this.audioPromptPort.playMelodyWithDurations(notesWithDurations, timing.gapMs);
+    } else {
+      await this.audioPromptPort.stop();
+      for (let i = 0; i < notesWithDurations.length; i += 1) {
+        const noteObj = notesWithDurations[i];
+        if (!noteObj) continue;
+        await this.audioPromptPort.playNote(noteObj.pitch, noteObj.durationMs);
+        if (i < notesWithDurations.length - 1) {
+          await new Promise<void>((resolve) => setTimeout(resolve, timing.gapMs));
+        }
       }
     }
   }
@@ -428,6 +479,20 @@ export class SessionService {
 
     this.currentEvaluation = null;
     return { ok: true as const, ended: false as const, exercise: this.getCurrentExercise() };
+  }
+
+  /** Discard the active session without saving any results or updating streak/progress. */
+  abortSession(): void {
+    if (!this.activeSession) return;
+    this.activeSession = null;
+    this.currentEvaluation = null;
+    void this.audioPromptPort.stop().catch(() => {});
+    void this.pitchCapturePort.stop().catch(() => {});
+  }
+
+  /** Returns true if the active session has no evaluated exercises yet. */
+  hasNoCompletedExercises(): boolean {
+    return this.activeSession !== null && this.activeSession.results.length === 0;
   }
 
   async endSession() {

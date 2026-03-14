@@ -44,6 +44,14 @@ describe('ExerciseGenerator – melody options', () => {
     expect(ex.metadata.melodyFirstNoteMode).toBe('C2');
   });
 
+  it('records firstNoteMode=C6 in metadata when explicitly requested for treble clef', () => {
+    const g = new ExerciseGenerator();
+    const options: MelodyOptions = { firstNoteMode: 'C6', allowedIntervalSteps: [1, 2] };
+    const ex = g.generate({ skillKey: 'sing_melody', clef: 'treble', level: 1, melodyOptions: options });
+
+    expect(ex.metadata.melodyFirstNoteMode).toBe('C6');
+  });
+
   it('records allowedIntervalSteps in metadata', () => {
     const g = new ExerciseGenerator();
     const options: MelodyOptions = { firstNoteMode: 'random', allowedIntervalSteps: [2, 4] };
@@ -56,12 +64,18 @@ describe('ExerciseGenerator – melody options', () => {
     const g = new ExerciseGenerator();
     for (let level = 1; level <= 5; level += 1) {
       const ex = g.generate({ skillKey: 'sing_melody', clef: 'treble', level });
-      const notes = (ex.prompt as any).notes as string[];
+      const notes = (ex.prompt as any).notes as Array<{ pitch: string; duration: string }>;
       const midis = (ex.expectedAnswer as any).targetMidis as number[];
 
       expect(notes.length).toBeGreaterThanOrEqual(3);
       expect(notes.length).toBeLessThanOrEqual(6);
       expect(notes.length).toBe(midis.length);
+
+      // Each note should have pitch and duration fields.
+      notes.forEach((n) => {
+        expect(typeof n.pitch).toBe('string');
+        expect(n.duration === 'quarter' || n.duration === 'half').toBe(true);
+      });
     }
   });
 
@@ -71,7 +85,7 @@ describe('ExerciseGenerator – melody options', () => {
     const options: MelodyOptions = { firstNoteMode: 'random', allowedIntervalSteps: [] };
     const ex = g.generate({ skillKey: 'sing_melody', clef: 'treble', level: 1, melodyOptions: options });
 
-    const notes = (ex.prompt as any).notes as string[];
+    const notes = (ex.prompt as any).notes as Array<{ pitch: string; duration: string }>;
     expect(notes.length).toBeGreaterThanOrEqual(3);
   });
 
