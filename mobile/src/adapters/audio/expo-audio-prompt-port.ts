@@ -1,4 +1,5 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
+import { buildSynthToneWavDataUri } from './synth-tone';
 
 function scientificToMidi(note: string): number {
   const match = /^([A-G])(#?)(-?\d+)$/.exec(String(note).trim());
@@ -17,83 +18,19 @@ function midiToFrequency(midi: number): number {
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  let output = '';
-
-  for (let i = 0; i < bytes.length; i += 3) {
-    const b0 = bytes[i] ?? 0;
-    const b1 = bytes[i + 1] ?? 0;
-    const b2 = bytes[i + 2] ?? 0;
-    const combined = (b0 << 16) | (b1 << 8) | b2;
-
-    output += chars[(combined >> 18) & 0x3f];
-    output += chars[(combined >> 12) & 0x3f];
-    output += i + 1 < bytes.length ? chars[(combined >> 6) & 0x3f] : '=';
-    output += i + 2 < bytes.length ? chars[combined & 0x3f] : '=';
-  }
-
-  return output;
-}
-
-function buildSineWaveWavDataUri(frequency: number, durationMs = 650): string {
-  const sampleRate = 44_100;
-  const channels = 1;
-  const bitsPerSample = 16;
-  const amplitude = 0.35;
-  const sampleCount = Math.floor((durationMs / 1000) * sampleRate);
-  const fadeSamples = Math.floor(sampleRate * 0.01);
-  const dataSize = sampleCount * channels * 2;
-  const fileSize = 36 + dataSize;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-
-  let offset = 0;
-  const writeString = (value: string) => {
-    for (let i = 0; i < value.length; i += 1) {
-      view.setUint8(offset + i, value.charCodeAt(i));
-    }
-    offset += value.length;
-  };
-
-  writeString('RIFF');
-  view.setUint32(offset, fileSize, true); offset += 4;
-  writeString('WAVE');
-  writeString('fmt ');
-  view.setUint32(offset, 16, true); offset += 4;
-  view.setUint16(offset, 1, true); offset += 2;
-  view.setUint16(offset, channels, true); offset += 2;
-  view.setUint32(offset, sampleRate, true); offset += 4;
-  view.setUint32(offset, sampleRate * channels * (bitsPerSample / 8), true); offset += 4;
-  view.setUint16(offset, channels * (bitsPerSample / 8), true); offset += 2;
-  view.setUint16(offset, bitsPerSample, true); offset += 2;
-  writeString('data');
-  view.setUint32(offset, dataSize, true); offset += 4;
-
-  for (let i = 0; i < sampleCount; i += 1) {
-    const time = i / sampleRate;
-    let envelope = 1;
-
-    if (i < fadeSamples) envelope = i / fadeSamples;
-    if (i > sampleCount - fadeSamples) envelope = (sampleCount - i) / fadeSamples;
-
-    const sample = Math.sin(2 * Math.PI * frequency * time) * amplitude * envelope;
-    const pcm = Math.max(-1, Math.min(1, sample));
-    view.setInt16(offset, pcm * 32767, true);
-    offset += 2;
-  }
-
-  const base64 = bytesToBase64(new Uint8Array(buffer));
-  return `data:audio/wav;base64,${base64}`;
-}
-
-async function waitForPlayerCompletion(player: AudioPlayer, expectedDurationMs: number): Promise<void> {
+async function waitForPlayerCompletion(
+  player: AudioPlayer,
+  expectedDurationMs: number,
+  shouldAbort: () => boolean,
+): Promise<void> {
   await new Promise<void>((resolve) => {
     let settled = false;
     const done = () => {
       if (!settled) {
         settled = true;
         subscription.remove();
+        clearInterval(abortPoll);
+        clearTimeout(fallback);
         resolve();
       }
     };
@@ -104,7 +41,13 @@ async function waitForPlayerCompletion(player: AudioPlayer, expectedDurationMs: 
       }
     });
 
-    setTimeout(done, Math.max(2000, expectedDurationMs + 900));
+    // Poll the abort flag frequently so stop() takes effect within one tick even
+    // when the native player does not fire a status event after remove().
+    const abortPoll = setInterval(() => {
+      if (shouldAbort()) done();
+    }, 50);
+
+    const fallback = setTimeout(done, Math.max(2000, expectedDurationMs + 900));
   });
 }
 
@@ -134,7 +77,7 @@ export class ExpoAudioPromptPort {
     const generation = this.stopGeneration;
     const midi = scientificToMidi(note);
     const frequency = midiToFrequency(midi);
-    const uri = buildSineWaveWavDataUri(frequency, durationMs);
+    const uri = buildSynthToneWavDataUri(frequency, durationMs);
 
     // Abort immediately if stop() was called since this playback was requested.
     if (generation !== this.stopGeneration) return false;
@@ -142,7 +85,7 @@ export class ExpoAudioPromptPort {
     const player = createAudioPlayer({ uri });
     this.activePlayer = player;
     player.play();
-    await waitForPlayerCompletion(player, durationMs);
+    await waitForPlayerCompletion(player, durationMs, () => generation !== this.stopGeneration);
     try {
       player.remove();
     } catch {}
