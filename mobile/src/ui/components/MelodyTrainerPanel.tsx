@@ -92,22 +92,26 @@ function TappableStaff({
     slotIndex: index,
     correct: true,
   }));
-  const useDurationWeightedLayout = !renderedNotes && Boolean(durations?.length);
-  const durationBasedSlotIndices = useDurationWeightedLayout
-    ? (() => {
-      let cursor = 0;
-      return renderedPitchNotes.map((note) => {
-        const slot = cursor;
-        cursor += noteBeats(note.duration);
-        return slot;
-      });
-    })()
-    : [];
+  // Always use beat-weighted layout when reference durations are available so that
+  // both the target staff and the result (recorded) staff share the same X positions.
+  const useDurationWeightedLayout = Boolean(durations?.length);
+  // Build a lookup from note-ordinal-index → cumulative beat offset using the reference durations.
+  const beatOffsetByNoteIndex: number[] = (() => {
+    if (!durations?.length) return [];
+    const offsets: number[] = [];
+    let cursor = 0;
+    for (const dur of durations) {
+      offsets.push(cursor);
+      cursor += noteBeats(dur);
+    }
+    return offsets;
+  })();
+  // Total beats is determined solely by the reference melody durations.
   const totalBeatSlots = useDurationWeightedLayout
-    ? Math.max(1, renderedPitchNotes.reduce((sum, note) => sum + noteBeats(note.duration), 0))
+    ? Math.max(1, (durations ?? []).reduce((sum, dur) => sum + noteBeats(dur), 0))
     : Math.max(notes.length, renderedPitchNotes.length);
   const slotIndices = useDurationWeightedLayout
-    ? durationBasedSlotIndices
+    ? renderedPitchNotes.map((note) => beatOffsetByNoteIndex[note.slotIndex] ?? note.slotIndex)
     : renderedPitchNotes.map((note) => note.slotIndex);
   const noteNodes = buildNoteNodes(
     renderedPitchNotes.map((note) => note.note),
