@@ -37,13 +37,13 @@ function yForScientific(scientific: string, clef: 'treble' | 'bass'): number {
   return middleLineY - yFactor * (LINE_SPACING / 2);
 }
 
-export function buildStaffNodes(clef: 'treble' | 'bass') {
+export function buildStaffNodes(clef: 'treble' | 'bass', color: string = '#0f172a') {
   const nodes = [];
   for (let i = 0; i < STAFF_LINES_COUNT; i += 1) {
     const y = STAFF_MARGIN_TOP + i * LINE_SPACING;
-    nodes.push(line({ x1: STAFF_MARGIN_LEFT, y1: y, x2: SVG_STAFF_WIDTH - STAFF_MARGIN_LEFT, y2: y, stroke: '#0f172a', 'stroke-width': 1 }));
+    nodes.push(line({ x1: STAFF_MARGIN_LEFT, y1: y, x2: SVG_STAFF_WIDTH - STAFF_MARGIN_LEFT, y2: y, stroke: color, 'stroke-width': 1 }));
   }
-  nodes.push(text({ x: STAFF_MARGIN_LEFT + 24, y: clef === 'bass' ? 78 : 93, 'font-size': clef === 'bass' ? 56 : 64, fill: '#0f172a' }, clef === 'bass' ? '𝄢' : '𝄞'));
+  nodes.push(text({ x: STAFF_MARGIN_LEFT + 24, y: clef === 'bass' ? 78 : 93, 'font-size': clef === 'bass' ? 56 : 64, fill: color }, clef === 'bass' ? '𝄢' : '𝄞'));
   return nodes;
 }
 
@@ -63,6 +63,7 @@ export function buildNoteNodes(
   highlightIndex: number | null = null,
   durations?: NoteType[],
   options?: NoteRenderOptions,
+  defaultColor: string = '#0f172a',
 ): ModelNode[] {
   if (!notes.length) return [];
   const startX = STAFF_MARGIN_LEFT + 110;
@@ -80,8 +81,8 @@ export function buildNoteNodes(
     const isHalf = duration === 'half';
     const style = options?.noteStyles?.[index] ?? null;
 
-    const fillColor = style?.fill ?? (isHighlighted ? '#2563eb' : '#0f172a');
-    const strokeColor = style?.stroke ?? (isHighlighted ? '#2563eb' : '#0f172a');
+    const fillColor = style?.fill ?? (isHighlighted ? '#2563eb' : defaultColor);
+    const strokeColor = style?.stroke ?? (isHighlighted ? '#2563eb' : defaultColor);
 
     const rx = style?.rx ?? (isHighlighted ? 8 : 6.5);
     const ry = style?.ry ?? (isHighlighted ? 6 : 5);
@@ -94,7 +95,7 @@ export function buildNoteNodes(
         cy: y,
         rx,
         ry,
-        fill: '#ffffff',
+        fill: 'transparent',
         stroke: strokeColor,
         'stroke-width': 1.5,
       });

@@ -9,6 +9,7 @@ import {
 } from '../../core/config/constants';
 import { buildNoteNodes, buildStaffNodes } from '../../core/render/staff-builder';
 import { toReactNativeSvgTree, type SvgDescriptor } from '../../core/render/rn-svg-renderer';
+import { useThemeColors } from '../hooks/use-theme-colors';
 
 const componentMap = {
   Line,
@@ -75,10 +76,12 @@ export function StaffSvg({
   overlayDirection?: 'up' | 'down' | null;
   singleNoteLayout?: boolean;
 }) {
+  const colors = useThemeColors();
+  const noteColor = colors.textPrimary;
   const promptNoteOptions = singleNoteLayout && notes.length === 1
     ? { noteStyles: [{ rx: 10, ry: 8 }] }
     : undefined;
-  const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null, undefined, promptNoteOptions);
+  const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null, undefined, promptNoteOptions, noteColor);
   const overlayLayoutCount = overlayIndex != null ? Math.max(notes.length, overlayIndex + 1) : notes.length;
   const overlayNodes = overlayNote && overlayIndex != null
     ? buildNoteNodes(
@@ -96,9 +99,10 @@ export function StaffSvg({
           ry: singleNoteLayout ? 8 : 6,
         }],
       },
+      noteColor,
     )
     : [];
-  const nodes = [...buildStaffNodes(clef), ...noteNodes, ...overlayNodes];
+  const nodes = [...buildStaffNodes(clef, noteColor), ...noteNodes, ...overlayNodes];
   const tree = toReactNativeSvgTree(nodes);
   const arrowX = overlayNote && overlayIndex != null ? xForSlot(overlayIndex, overlayLayoutCount) : null;
   const arrowY = overlayNote && overlayIndex != null ? yForScientific(overlayNote, clef) : null;

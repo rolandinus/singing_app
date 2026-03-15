@@ -73,6 +73,7 @@ function TappableStaff({
   renderedNotes,
   onTapNote,
   recordingProgress,
+  noteColor,
 }: {
   clef: Clef;
   notes: string[];
@@ -85,6 +86,7 @@ function TappableStaff({
   renderedNotes?: Array<{ note: string; duration: NoteType; slotIndex: number; correct: boolean }>;
   onTapNote?: (note: string, index: number) => void;
   recordingProgress?: number | null;
+  noteColor?: string;
 }) {
   const renderedPitchNotes = renderedNotes ?? notes.map((note, index) => ({
     note,
@@ -128,6 +130,7 @@ function TappableStaff({
         }))
         : undefined,
     },
+    noteColor,
   );
   const overlayNodes = overlayNote && overlayIndex != null
     ? buildNoteNodes(
@@ -140,9 +143,10 @@ function TappableStaff({
         slotIndices: [slotIndices[overlayIndex] ?? overlayIndex],
         noteStyles: [{ fill: '#dc2626', stroke: '#dc2626', rx: 8, ry: 6 }],
       },
+      noteColor,
     )
     : [];
-  const staffNodes = buildStaffNodes(clef);
+  const staffNodes = buildStaffNodes(clef, noteColor);
   const allNodes = [...staffNodes, ...noteNodes, ...overlayNodes];
   const tree = toReactNativeSvgTree(allNodes);
 
@@ -320,6 +324,7 @@ export function MelodyTrainerPanel({
   onChangeBpm,
 }: Props) {
   const colors = useThemeColors();
+  const noteColor = colors.textPrimary;
   const notes = getMelodyNotes(exercise);
   const durations = getMelodyDurations(exercise);
   const isCapturing = loadingCapture;
@@ -349,6 +354,7 @@ export function MelodyTrainerPanel({
         overlayDuration={liveDetectedNoteIndex != null ? (durations[liveDetectedNoteIndex] ?? 'quarter') : 'quarter'}
         recordingProgress={isCapturing && !isCountingIn ? recordingProgress : null}
         onTapNote={!isCapturing ? onTapNote : undefined}
+        noteColor={noteColor}
       />
 
       {/* Count-in indicator */}
@@ -364,6 +370,7 @@ export function MelodyTrainerPanel({
             durations={durations}
             noteResults={noteResults}
             renderedNotes={renderedResultNotes}
+            noteColor={noteColor}
           />
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             {noteResults.map((result, i) => (
