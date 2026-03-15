@@ -97,8 +97,69 @@ export function renderSynthTonePcm(frequency: number, durationMs = 650): Int16Ar
   return pcm;
 }
 
-export function buildSynthToneWavDataUri(frequency: number, durationMs = 650): string {
-  const pcmSamples = renderSynthTonePcm(frequency, durationMs);
+/**
+ * Render a metronome click PCM buffer modelled after the browser app's Tone.js
+ * MembraneSynth.  Key characteristics:
+ *   - Instantaneous pitch starts `octaves` above the base frequency and decays
+ *     exponentially to the base frequency over `pitchDecay` seconds.
+ *   - Amplitude follows a short attack → exponential decay → silence shape.
+ *   - A band-limited noise burst in the first ~4 ms adds a sharp transient click.
+ *
+ * Parameters match the browser MembraneSynth defaults:
+ *   pitchDecay 0.008 s, octaves 2, attack 0.001 s, decay 0.3 s
+ */
+export function renderMetronomeClickPcm(baseFrequency: number, accent = false): Int16Array {
+  // Accent ticks are slightly louder and use a higher base frequency.
+  const freq = clamp(baseFrequency, 40, 4_000);
+  const octaves = 2;
+  const pitchDecay = 0.008;
+  const attackTime = 0.001;
+  const decayTime = 0.3;
+  const durationSeconds = attackTime + decayTime + 0.05; // small tail for safety
+  const sampleCount = Math.ceil(durationSeconds * SAMPLE_RATE);
+  const pcm = new Int16Array(sampleCount);
+
+  // Phase accumulator so we correctly integrate the time-varying frequency.
+  let phase = 0;
+
+  for (let i = 0; i < sampleCount; i += 1) {
+    const t = i / SAMPLE_RATE;
+
+    // ---- Amplitude envelope (attack → exponential decay) ----
+    let amp: number;
+    if (t < attackTime) {
+      amp = t / attackTime;
+    } else {
+      const decayT = t - attackTime;
+      // Exponential decay: e^(-k*t) where k chosen so amplitude ≈ 0 at decayTime.
+      const k = 10 / decayTime;
+      amp = Math.exp(-k * decayT);
+    }
+
+    // ---- Instantaneous frequency: exponential pitch sweep ----
+    // At t=0 → freq * 2^octaves, decays to freq over pitchDecay seconds.
+    // f(t) = freq * 2^(octaves * e^(-t/pitchDecay))
+    const freqNow = freq * Math.pow(2, octaves * Math.exp(-t / pitchDecay));
+
+    // Accumulate phase (Euler integration).
+    phase += (2 * Math.PI * freqNow) / SAMPLE_RATE;
+
+    // ---- Oscillator + transient noise click ----
+    const osc = Math.sin(phase);
+
+    // Short noise transient in the first 4 ms for a crisper click attack.
+    const noiseAmt = t < 0.004 ? (1 - t / 0.004) * 0.35 : 0;
+    const noise = (Math.random() * 2 - 1) * noiseAmt;
+
+    const gain = accent ? 0.82 : 0.65;
+    const raw = (osc + noise) * amp * gain;
+    pcm[i] = Math.round(clamp(Math.tanh(raw * 1.1), -1, 1) * MAX_INT16);
+  }
+
+  return pcm;
+}
+
+function buildWavDataUri(pcmSamples: Int16Array): string {
   const dataSize = pcmSamples.length * CHANNELS * 2;
   const fileSize = 36 + dataSize;
   const buffer = new ArrayBuffer(44 + dataSize);
@@ -132,4 +193,12 @@ export function buildSynthToneWavDataUri(frequency: number, durationMs = 650): s
   }
 
   return `data:audio/wav;base64,${bytesToBase64(new Uint8Array(buffer))}`;
+}
+
+export function buildMetronomeClickWavDataUri(baseFrequency: number, accent = false): string {
+  return buildWavDataUri(renderMetronomeClickPcm(baseFrequency, accent));
+}
+
+export function buildSynthToneWavDataUri(frequency: number, durationMs = 650): string {
+  return buildWavDataUri(renderSynthTonePcm(frequency, durationMs));
 }

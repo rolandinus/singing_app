@@ -1,5 +1,5 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
-import { buildSynthToneWavDataUri } from './synth-tone';
+import { buildMetronomeClickWavDataUri, buildSynthToneWavDataUri } from './synth-tone';
 
 function scientificToMidi(note: string): number {
   const match = /^([A-G])(#?)(-?\d+)$/.exec(String(note).trim());
@@ -165,10 +165,30 @@ export class ExpoAudioPromptPort {
     }
   }
 
-  async playMetronomeTick(accent = false, durationMs = 90): Promise<void> {
+  async playMetronomeTick(accent = false, _durationMs = 90): Promise<void> {
     await this.stop();
     await this.ensureAudioMode();
-    await this.playTone(accent ? 'C6' : 'C5', durationMs);
+
+    // Use a MembraneSynth-style exponential pitch-sweep click, matching the
+    // browser app (Tone.js MembraneSynth: pitchDecay=0.008, octaves=2).
+    // Base frequency: C5 (~523 Hz) for accented beat 1, C4 (~262 Hz) otherwise.
+    const baseFreq = accent ? 523.25 : 261.63;
+    const uri = buildMetronomeClickWavDataUri(baseFreq, accent);
+
+    const generation = this.stopGeneration;
+    if (generation !== this.stopGeneration) return;
+
+    // The click PCM is ~350 ms long (attack + decay tail); play it through.
+    const player = createAudioPlayer({ uri });
+    this.activePlayer = player;
+    player.play();
+    await waitForPlayerCompletion(player, 350, () => generation !== this.stopGeneration);
+    try {
+      player.remove();
+    } catch {}
+    if (this.activePlayer === player) {
+      this.activePlayer = null;
+    }
   }
 
   async stop(): Promise<void> {

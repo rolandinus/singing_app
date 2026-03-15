@@ -15,6 +15,9 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: t(locale, 'nav_dashboard') }} />
       <Tabs.Screen name="practice" options={{ title: t(locale, 'nav_practice') }} />
       <Tabs.Screen name="settings" options={{ title: t(locale, 'nav_settings') }} />
+      {__DEV__ ? (
+        <Tabs.Screen name="debug" options={{ title: t(locale, 'nav_debug') }} />
+      ) : null}
     </Tabs>
   );
 }
