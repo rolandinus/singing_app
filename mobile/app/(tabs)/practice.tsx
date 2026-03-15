@@ -11,8 +11,10 @@ import { HearingPromptSvg } from '../../src/ui/components/HearingPromptSvg';
 import { MelodyTrainerPanel } from '../../src/ui/components/MelodyTrainerPanel';
 import { Screen } from '../../src/ui/components/Screen';
 import { StaffSvg } from '../../src/ui/components/StaffSvg';
-import { Stepper } from '../../src/ui/components/Stepper';
 import { useThemeColors } from '../../src/ui/hooks/use-theme-colors';
+
+const LEVEL_OPTIONS = [1, 2, 3, 4, 5] as const;
+const COUNT_OPTIONS = [5, 10, 20, 0] as const; // 0 = unlimited
 
 const CUSTOM_FAMILIES: ExerciseFamily[] = ['visual', 'aural', 'singing'];
 
@@ -154,10 +156,12 @@ export default function PracticeScreen() {
     }
   }
 
-  const progressPercent = sessionMeta.total > 0 ? Math.round((sessionMeta.index / sessionMeta.total) * 100) : 0;
+  const progressPercent = sessionMeta.isUnlimited
+    ? 0
+    : sessionMeta.total > 0 ? Math.round((sessionMeta.index / sessionMeta.total) * 100) : 0;
   const canGoNext = Boolean(feedback.text) && !singNoteAutoAdvancePending;
   const subPrompt = currentExercise ? buildSubPrompt(currentExercise, locale) : '';
-  const sessionActive = sessionMeta.total > 0;
+  const sessionActive = sessionMeta.total > 0 || sessionMeta.isUnlimited;
 
   React.useEffect(() => {
     if (!sessionActive && showEndSessionConfirm) {
@@ -253,13 +257,54 @@ export default function PracticeScreen() {
             ))}
           </View>
 
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <View style={{ flex: 1, gap: 6 }}>
-              <Stepper label={t(locale, 'level')} value={selectedLevel} min={1} max={5} onChange={setSelectedLevel} disabled={loading.startCustom} />
-            </View>
-            <View style={{ flex: 1, gap: 6 }}>
-              <Stepper label={t(locale, 'count')} value={selectedCount} min={1} max={50} onChange={setSelectedCount} disabled={loading.startCustom} />
-            </View>
+          <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>{t(locale, 'level')}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {LEVEL_OPTIONS.map((lvl) => (
+              <Pressable
+                key={lvl}
+                style={[
+                  { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 999, paddingHorizontal: 16, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+                  selectedLevel === lvl && { backgroundColor: colors.toggleActiveBg, borderColor: colors.toggleActiveBorder },
+                  loading.startCustom && { opacity: 0.45 },
+                ]}
+                onPress={() => setSelectedLevel(lvl)}
+                disabled={loading.startCustom}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedLevel === lvl }}
+              >
+                <Text style={[
+                  { color: colors.textSecondary },
+                  selectedLevel === lvl && { color: colors.primaryStrong, fontWeight: '700' },
+                ]}>
+                  {`L${lvl}`}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>{t(locale, 'count')}</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {COUNT_OPTIONS.map((cnt) => (
+              <Pressable
+                key={cnt}
+                style={[
+                  { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 999, paddingHorizontal: 16, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+                  selectedCount === cnt && { backgroundColor: colors.toggleActiveBg, borderColor: colors.toggleActiveBorder },
+                  loading.startCustom && { opacity: 0.45 },
+                ]}
+                onPress={() => setSelectedCount(cnt)}
+                disabled={loading.startCustom}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedCount === cnt }}
+              >
+                <Text style={[
+                  { color: colors.textSecondary },
+                  selectedCount === cnt && { color: colors.primaryStrong, fontWeight: '700' },
+                ]}>
+                  {cnt === 0 ? t(locale, 'count_unlimited') : String(cnt)}
+                </Text>
+              </Pressable>
+            ))}
           </View>
 
           <View style={{ borderWidth: 1, borderColor: colors.borderLight, borderRadius: 8, backgroundColor: colors.surfaceNeutral, padding: 10 }}>
@@ -357,7 +402,7 @@ export default function PracticeScreen() {
       {sessionActive ? (
         <Card>
           <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>
-            {t(locale, 'session_label')}: {`${modeLabel(locale, sessionMeta.mode)} • ${t(locale, 'exercise_label')} ${sessionMeta.index + 1}/${sessionMeta.total}`}
+            {t(locale, 'session_label')}: {`${modeLabel(locale, sessionMeta.mode)} • ${t(locale, 'exercise_label')} ${sessionMeta.index + 1}${sessionMeta.isUnlimited ? '' : `/${sessionMeta.total}`}`}
           </Text>
 
           <View style={{ height: 8, borderRadius: 99, backgroundColor: colors.masteryTrack, overflow: 'hidden' }}>

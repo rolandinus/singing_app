@@ -56,6 +56,10 @@ type ActiveSession = {
   results: SessionRecord['exercises'];
   startedAt: string;
   startProgressBySkill: Record<string, { mastery: number; level: number }>;
+  /** When true, new exercises are appended on demand instead of ending the session. */
+  isUnlimited: boolean;
+  /** Generation parameters needed to create new exercises on-demand (unlimited mode). */
+  unlimitedParams?: { skillKey: SkillKey; clef: Clef; level: number; melodyOptions?: MelodyOptions };
 };
 
 /** Timing parameters derived from BPM for melody playback and capture. */
@@ -74,6 +78,19 @@ export type MelodyNoteResult = {
   detectedMidi: number | null;
   correct: boolean;
   score: number;
+};
+
+export type MelodyCaptureAttemptOutcome = {
+  exercise: Exercise;
+  evaluation: EvaluationResult;
+  feedback: string;
+  contour: {
+    detectedMidis: number[];
+    detectedFrequencies: number[];
+    experimentalDetectedMidis?: number[];
+    experimentalDetectedFrequencies?: number[];
+  } | null;
+  noteResults: MelodyNoteResult[];
 };
 
 export const DEFAULT_MELODY_BPM = 72;
@@ -159,8 +176,20 @@ export class SessionService {
   };
   private pitchCapturePort: {
     ensureMicrophonePermission?: () => Promise<void>;
-    capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
-    capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{ detectedMidis: number[]; detectedFrequencies: number[] } | null>;
+    capturePitchSample: (durationMs: number) => Promise<{
+      detectedFrequency: number;
+      detectedMidi: number;
+      noteName: string | null;
+      experimentalDetectedFrequency?: number | null;
+      experimentalDetectedMidi?: number | null;
+      experimentalNoteName?: string | null;
+    } | null>;
+    capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{
+      detectedMidis: number[];
+      detectedFrequencies: number[];
+      experimentalDetectedMidis?: number[];
+      experimentalDetectedFrequencies?: number[];
+    } | null>;
     setDebugListener?: (listener: ((snapshot: unknown) => void) | null) => void;
     stop: () => Promise<void>;
   };
@@ -183,8 +212,20 @@ export class SessionService {
     stop: () => Promise<void>;
   }, pitchCapturePort?: {
     ensureMicrophonePermission?: () => Promise<void>;
-    capturePitchSample: (durationMs: number) => Promise<{ detectedFrequency: number; detectedMidi: number; noteName: string | null } | null>;
-    capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{ detectedMidis: number[]; detectedFrequencies: number[] } | null>;
+    capturePitchSample: (durationMs: number) => Promise<{
+      detectedFrequency: number;
+      detectedMidi: number;
+      noteName: string | null;
+      experimentalDetectedFrequency?: number | null;
+      experimentalDetectedMidi?: number | null;
+      experimentalNoteName?: string | null;
+    } | null>;
+    capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{
+      detectedMidis: number[];
+      detectedFrequencies: number[];
+      experimentalDetectedMidis?: number[];
+      experimentalDetectedFrequencies?: number[];
+    } | null>;
     setDebugListener?: (listener: ((snapshot: unknown) => void) | null) => void;
     stop: () => Promise<void>;
   }) {
@@ -237,8 +278,13 @@ export class SessionService {
   }
 
   getSessionMeta() {
-    if (!this.activeSession) return { mode: 'guided' as const, index: 0, total: 0 };
-    return { mode: this.activeSession.mode, index: this.activeSession.index, total: this.activeSession.queue.length };
+    if (!this.activeSession) return { mode: 'guided' as const, index: 0, total: 0, isUnlimited: false };
+    return {
+      mode: this.activeSession.mode,
+      index: this.activeSession.index,
+      total: this.activeSession.queue.length,
+      isUnlimited: this.activeSession.isUnlimited,
+    };
   }
 
   getCurrentExercise(): Exercise | null {
@@ -262,11 +308,24 @@ export class SessionService {
   }
 
   startCustomSession(input: { skillKey: SkillKey; clef: Clef; level: number; count: number; melodyOptions?: MelodyOptions }) {
-    const queue = this.planner.generateCustomSession({ ...input, generator: this.generator }) as Exercise[];
-    return this.startSession('custom', queue);
+    const isUnlimited = input.count === 0;
+    // For unlimited mode, seed the queue with a small initial batch.
+    const effectiveCount = isUnlimited ? 1 : input.count;
+    const queue = this.planner.generateCustomSession({ ...input, count: effectiveCount, generator: this.generator }) as Exercise[];
+    return this.startSession('custom', queue, isUnlimited, isUnlimited ? {
+      skillKey: input.skillKey,
+      clef: input.clef,
+      level: input.level,
+      melodyOptions: input.melodyOptions,
+    } : undefined);
   }
 
-  private startSession(mode: 'guided' | 'custom', queue: Exercise[]) {
+  private startSession(
+    mode: 'guided' | 'custom',
+    queue: Exercise[],
+    isUnlimited = false,
+    unlimitedParams?: { skillKey: SkillKey; clef: Clef; level: number; melodyOptions?: MelodyOptions },
+  ) {
     if (!queue.length) return { ok: false as const, error: 'Keine Übungen für diese Auswahl generiert.' };
 
     const startProgressBySkill: Record<string, { mastery: number; level: number }> = {};
@@ -285,6 +344,8 @@ export class SessionService {
       results: [],
       startedAt: new Date().toISOString(),
       startProgressBySkill,
+      isUnlimited,
+      unlimitedParams,
     };
     this.currentEvaluation = null;
 
@@ -336,60 +397,14 @@ export class SessionService {
     const exercise = this.getCurrentExercise();
     if (!exercise || exercise.family !== 'singing') return null;
     if (this.currentEvaluation?.correct) return null;
-    await this.pitchCapturePort.ensureMicrophonePermission?.();
 
     if (exercise.skillKey === 'sing_melody') {
-      const targetMidis = Array.isArray((exercise.expectedAnswer as any).targetMidis)
-        ? ((exercise.expectedAnswer as any).targetMidis as number[])
-        : [];
-      const melodyNoteObjects = getMelodyNoteObjects(exercise);
-      const beats = Math.max(1, totalMelodyBeats(melodyNoteObjects));
-      const toleranceCents = this.toleranceForLevel(exercise.level);
-      const timing = buildMelodyTimingModel(options.bpm ?? DEFAULT_MELODY_BPM, beats);
-
-      // Count-in phase: fire beat callbacks before capture starts.
-      if (options.onCountInBeat) {
-        const tickDurationMs = Math.min(120, Math.max(60, Math.round(timing.noteDurationMs * 0.18)));
-        for (let beat = 1; beat <= COUNT_IN_BEATS; beat += 1) {
-          options.onCountInBeat(beat);
-          await this.audioPromptPort.playMetronomeTick?.(beat === 1, tickDurationMs);
-          await new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, timing.noteDurationMs - tickDurationMs)));
-        }
-      }
-
-      // Launch note-index callbacks at the start of each note's beat slot.
-      const noteTimers: ReturnType<typeof setTimeout>[] = [];
-      options.onRecordingStarted?.();
-      if (options.onNoteIndex) {
-        let accumulatedBeats = 0;
-        for (let i = 0; i < melodyNoteObjects.length; i += 1) {
-          const delay = accumulatedBeats * timing.noteDurationMs;
-          noteTimers.push(setTimeout(() => options.onNoteIndex!(i), delay));
-          accumulatedBeats += noteBeats(melodyNoteObjects[i]?.duration ?? 'quarter');
-        }
-      }
-
-      let contour: { detectedMidis: number[]; detectedFrequencies: number[] } | null = null;
-      try {
-        contour = await this.pitchCapturePort.capturePitchContour(timing.captureDurationMs, timing.segmentMs);
-      } finally {
-        noteTimers.forEach(clearTimeout);
-      }
-
-      const evaluation = this.evaluator.evaluate(
-        exercise,
-        contour ?? { detectedMidis: [] },
-        { toleranceCents },
-      );
-
-      // Compute per-note results from evaluation detail.
-      const normalizedDetected = Array.isArray((evaluation.accuracyDetail as any).normalizedDetected)
-        ? ((evaluation.accuracyDetail as any).normalizedDetected as number[])
-        : [];
-      const noteResults = computeMelodyNoteResults(targetMidis, normalizedDetected, toleranceCents);
-
-      return this.applyEvaluation(exercise, evaluation, contour, null, noteResults);
+      const outcome = await this.captureMelodyExerciseAttempt(exercise, options);
+      if (!outcome) return null;
+      return this.applyEvaluation(exercise, outcome.evaluation, outcome.contour, null, outcome.noteResults);
     }
+
+    await this.pitchCapturePort.ensureMicrophonePermission?.();
 
     if (exercise.skillKey === 'sing_note' && options.continuousSingNote) {
       const windowDurationMs = Math.max(500, options.sampleDurationMs ?? 900);
@@ -481,6 +496,20 @@ export class SessionService {
   async playMelodyWithTiming(bpm: number): Promise<void> {
     const exercise = this.getCurrentExercise();
     if (!exercise || exercise.skillKey !== 'sing_melody') return;
+    await this.playMelodyExerciseWithTiming(exercise, bpm);
+  }
+
+  createMelodyExercise(input: { clef: Clef; level: number; melodyOptions?: MelodyOptions }): Exercise {
+    return this.generator.generate({
+      skillKey: 'sing_melody',
+      clef: input.clef,
+      level: input.level,
+      melodyOptions: input.melodyOptions,
+    });
+  }
+
+  async playMelodyExerciseWithTiming(exercise: Exercise, bpm: number): Promise<void> {
+    if (exercise.skillKey !== 'sing_melody') return;
     const melodyNoteObjects = getMelodyNoteObjects(exercise);
     if (melodyNoteObjects.length === 0) return;
 
@@ -513,6 +542,74 @@ export class SessionService {
     }
   }
 
+  async captureMelodyExerciseAttempt(
+    exercise: Exercise,
+    options: {
+      bpm?: number;
+      onCountInBeat?: (beat: number) => void;
+      onNoteIndex?: (index: number) => void;
+      onRecordingStarted?: () => void;
+    } = {},
+  ): Promise<MelodyCaptureAttemptOutcome | null> {
+    if (exercise.skillKey !== 'sing_melody') return null;
+
+    await this.pitchCapturePort.ensureMicrophonePermission?.();
+
+    const targetMidis = Array.isArray((exercise.expectedAnswer as any).targetMidis)
+      ? ((exercise.expectedAnswer as any).targetMidis as number[])
+      : [];
+    const melodyNoteObjects = getMelodyNoteObjects(exercise);
+    const beats = Math.max(1, totalMelodyBeats(melodyNoteObjects));
+    const toleranceCents = this.toleranceForLevel(exercise.level);
+    const timing = buildMelodyTimingModel(options.bpm ?? DEFAULT_MELODY_BPM, beats);
+
+    if (options.onCountInBeat) {
+      const tickDurationMs = Math.min(120, Math.max(60, Math.round(timing.noteDurationMs * 0.18)));
+      for (let beat = 1; beat <= COUNT_IN_BEATS; beat += 1) {
+        options.onCountInBeat(beat);
+        await this.audioPromptPort.playMetronomeTick?.(beat === 1, tickDurationMs);
+        await new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, timing.noteDurationMs - tickDurationMs)));
+      }
+    }
+
+    const noteTimers: ReturnType<typeof setTimeout>[] = [];
+    options.onRecordingStarted?.();
+    if (options.onNoteIndex) {
+      let accumulatedBeats = 0;
+      for (let i = 0; i < melodyNoteObjects.length; i += 1) {
+        const delay = accumulatedBeats * timing.noteDurationMs;
+        noteTimers.push(setTimeout(() => options.onNoteIndex?.(i), delay));
+        accumulatedBeats += noteBeats(melodyNoteObjects[i]?.duration ?? 'quarter');
+      }
+    }
+
+    let contour: { detectedMidis: number[]; detectedFrequencies: number[] } | null = null;
+    try {
+      contour = await this.pitchCapturePort.capturePitchContour(timing.captureDurationMs, timing.segmentMs);
+    } finally {
+      noteTimers.forEach(clearTimeout);
+    }
+
+    const evaluation = this.evaluator.evaluate(
+      exercise,
+      contour ?? { detectedMidis: [] },
+      { toleranceCents },
+    );
+
+    const normalizedDetected = Array.isArray((evaluation.accuracyDetail as any).normalizedDetected)
+      ? ((evaluation.accuracyDetail as any).normalizedDetected as number[])
+      : [];
+    const noteResults = computeMelodyNoteResults(targetMidis, normalizedDetected, toleranceCents);
+
+    return {
+      exercise,
+      evaluation,
+      feedback: evaluation.feedback,
+      contour,
+      noteResults,
+    };
+  }
+
   async nextExercise() {
     if (!this.activeSession) return { ok: false as const };
 
@@ -527,6 +624,21 @@ export class SessionService {
     }
 
     this.activeSession.index += 1;
+
+    // Unlimited mode: append a fresh exercise when reaching the end of the queue.
+    if (this.activeSession.isUnlimited && this.activeSession.index >= this.activeSession.queue.length) {
+      const params = this.activeSession.unlimitedParams;
+      if (params) {
+        const newExercise = this.generator.generate({
+          skillKey: params.skillKey,
+          clef: params.clef,
+          level: params.level,
+          melodyOptions: params.melodyOptions,
+        });
+        this.activeSession.queue.push(newExercise);
+      }
+    }
+
     if (this.activeSession.index >= this.activeSession.queue.length) {
       const ended = await this.endSession();
       return { ok: true as const, ended: true as const, summary: ended?.summary ?? null };

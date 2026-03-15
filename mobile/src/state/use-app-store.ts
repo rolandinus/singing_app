@@ -86,7 +86,7 @@ type StoreState = {
   recentSessions: SessionRecord[];
   skillRows: Array<{ clef: Clef; skillKey: SkillKey; level: number; mastery: number; attemptsTotal: number }>;
   currentExercise: Exercise | null;
-  sessionMeta: { mode: 'guided' | 'custom'; index: number; total: number };
+  sessionMeta: { mode: 'guided' | 'custom'; index: number; total: number; isUnlimited: boolean };
   feedback: { text: string; isCorrect: boolean };
   answerState: { selectedChoice: string | null; expectedChoice: string | null };
   summary: SessionSummary | null;
@@ -172,7 +172,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
   recentSessions: [],
   skillRows: [],
   currentExercise: null,
-  sessionMeta: { mode: 'guided', index: 0, total: 0 },
+  sessionMeta: { mode: 'guided', index: 0, total: 0, isUnlimited: false },
   feedback: { text: '', isCorrect: false },
   answerState: { selectedChoice: null, expectedChoice: null },
   summary: null,
@@ -524,7 +524,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         set({
           summary: result.summary,
           currentExercise: null,
-          sessionMeta: { mode: 'guided', index: 0, total: 0 },
+          sessionMeta: { mode: 'guided', index: 0, total: 0, isUnlimited: false },
           answerState: { selectedChoice: null, expectedChoice: null },
           singNoteAutoAdvancePending: false,
         });
@@ -552,7 +552,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
     service.abortSession();
     set({
       currentExercise: null,
-      sessionMeta: { mode: 'guided', index: 0, total: 0 },
+      sessionMeta: { mode: 'guided', index: 0, total: 0, isUnlimited: false },
       feedback: { text: '', isCorrect: false },
       answerState: { selectedChoice: null, expectedChoice: null },
       melodyNoteResults: [],
@@ -594,7 +594,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       set({
         summary: ended.summary,
         currentExercise: null,
-        sessionMeta: { mode: 'guided', index: 0, total: 0 },
+        sessionMeta: { mode: 'guided', index: 0, total: 0, isUnlimited: false },
         answerState: { selectedChoice: null, expectedChoice: null },
         singNoteAutoAdvancePending: false,
       });
@@ -646,7 +646,10 @@ export const useAppStore = create<StoreState>((set, get) => ({
   setSelectedSkill(value) { set({ selectedSkill: value }); },
   setSelectedClef(value) { set({ selectedClef: value }); },
   setSelectedLevel(value) { set({ selectedLevel: Math.max(1, Math.min(5, value)) }); },
-  setSelectedCount(value) { set({ selectedCount: Math.max(1, Math.min(50, value)) }); },
+  setSelectedCount(value) {
+    // 0 is the sentinel for unlimited; otherwise clamp to 1–50.
+    set({ selectedCount: value === 0 ? 0 : Math.max(1, Math.min(50, value)) });
+  },
   setSelectedMelodyOptions(partial) {
     set((state) => ({ selectedMelodyOptions: { ...state.selectedMelodyOptions, ...partial } }));
   },

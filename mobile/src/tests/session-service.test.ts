@@ -242,6 +242,39 @@ describe('SessionService', () => {
     }
   });
 
+  it('unlimited mode (count=0) keeps generating exercises on nextExercise instead of ending', async () => {
+    const service = new SessionService(createMockStorage());
+    await service.init();
+
+    const started = service.startCustomSession({
+      skillKey: 'note_naming',
+      clef: 'treble',
+      level: 1,
+      count: 0, // unlimited
+    });
+    expect(started.ok).toBe(true);
+
+    const meta = service.getSessionMeta();
+    expect(meta.isUnlimited).toBe(true);
+
+    // Advance through the first exercise (skip answer).
+    const step1 = await service.nextExercise();
+    expect(step1.ok).toBe(true);
+    if (!step1.ok) return;
+    // In unlimited mode the session should NOT end when the initial queue is exhausted.
+    expect((step1 as any).ended).toBe(false);
+
+    // A second advance should also not end the session.
+    const step2 = await service.nextExercise();
+    expect(step2.ok).toBe(true);
+    expect((step2 as any).ended).toBe(false);
+
+    // Manually ending should produce a valid summary.
+    const ended = await service.endSession();
+    expect(ended).toBeTruthy();
+    expect(ended?.summary.mode).toBe('custom');
+  });
+
   it('keeps sampling sing_note windows until the user is in tune', async () => {
     let captureCount = 0;
     let targetMidi = 60;
