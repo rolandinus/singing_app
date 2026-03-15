@@ -87,6 +87,7 @@ export default function PracticeScreen() {
   const captureSingingAttempt = useAppStore((s) => s.captureSingingAttempt);
   const singingNoteIndex = useAppStore((s) => s.singingNoteIndex);
   const pitchDebug = useAppStore((s) => s.pitchDebug);
+  const micOffWarning = useAppStore((s) => s.micOffWarning);
   const nextExercise = useAppStore((s) => s.nextExercise);
   const abortSession = useAppStore((s) => s.abortSession);
   const endSession = useAppStore((s) => s.endSession);
@@ -412,6 +413,11 @@ export default function PracticeScreen() {
           {currentExercise ? (
             <>
               {/* sing_melody gets its own dedicated trainer panel */}
+              {currentExercise.skillKey === 'sing_melody' && micOffWarning ? (
+                <View style={{ borderWidth: 1, borderColor: '#f59e0b', borderRadius: 8, backgroundColor: '#fffbeb', padding: 10 }}>
+                  <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 13 }}>{t(locale, 'mic_off_warning')}</Text>
+                </View>
+              ) : null}
               {currentExercise.skillKey === 'sing_melody' ? (
                 <MelodyTrainerPanel
                   exercise={currentExercise}
@@ -500,6 +506,12 @@ export default function PracticeScreen() {
                         ? <ActivityIndicator color="#fff" />
                         : <Text style={{ color: '#fff', fontWeight: '700' }}>{t(locale, 'record_and_evaluate')}</Text>}
                     </Pressable>
+                  ) : null}
+
+                  {currentExercise.family === 'singing' && micOffWarning ? (
+                    <View style={{ borderWidth: 1, borderColor: '#f59e0b', borderRadius: 8, backgroundColor: '#fffbeb', padding: 10 }}>
+                      <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 13 }}>{t(locale, 'mic_off_warning')}</Text>
+                    </View>
                   ) : null}
 
                   {currentExercise.family === 'singing' ? (
