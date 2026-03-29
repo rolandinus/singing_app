@@ -21,6 +21,15 @@ function logStoreDebug(stage: string, details: Record<string, unknown> = {}) {
   console.log(`[store:end-session] ${stage}`, details);
 }
 
+/**
+ * Returns true when the pitch capture completed but detected no pitch samples at all.
+ * This typically means the microphone is muted, the wrong input is selected,
+ * or the app lacks the necessary audio permissions.
+ */
+function pitchDebugIndicatesNoPitch(debug: PitchDebugState): boolean {
+  return debug.phase === 'analysis_complete' && debug.timelinePoints === 0;
+}
+
 type PitchDebugState = {
   phase: PitchCaptureDebugSnapshot['phase'];
   timestampMs: number | null;
@@ -113,6 +122,8 @@ type StoreState = {
   melodyRecordingProgress: number | null;
   /** True right after a successful sing_note detection, while auto-advancing to next exercise. */
   singNoteAutoAdvancePending: boolean;
+  /** True when the last singing capture completed with zero detected pitch samples (possible mic issue). */
+  micOffWarning: boolean;
   loading: {
     startGuided: boolean;
     startCustom: boolean;
@@ -186,6 +197,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
   selectedCount: 10,
   selectedMelodyOptions: { ...DEFAULT_MELODY_OPTIONS },
   singingNoteIndex: null,
+  micOffWarning: false,
   pitchDebug: { ...INITIAL_PITCH_DEBUG_STATE },
   pitchDebugEvents: [],
   melodyBpm: DEFAULT_MELODY_BPM,
@@ -385,6 +397,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       melodyCountInBeat: null,
       melodyRecordingProgress: null,
       singNoteAutoAdvancePending: false,
+      micOffWarning: false,
       pitchDebug: {
         ...INITIAL_PITCH_DEBUG_STATE,
         timestampMs: Date.now(),
@@ -410,6 +423,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
           answerState: { selectedChoice: null, expectedChoice: null },
           sessionMeta: service.getSessionMeta(),
           singingNoteIndex: null,
+          micOffWarning: pitchDebugIndicatesNoPitch(get().pitchDebug),
         });
         get().refreshDashboard();
       } else if (exercise?.skillKey === 'sing_melody') {
@@ -454,6 +468,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
           melodyCountInBeat: null,
           melodyNoteResults: outcome.noteResults ?? [],
           melodyRecordingProgress: null,
+          micOffWarning: pitchDebugIndicatesNoPitch(get().pitchDebug),
         });
         get().refreshDashboard();
       } else if (exercise?.skillKey === 'sing_note') {
@@ -472,6 +487,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
           sessionMeta: service.getSessionMeta(),
           singingNoteIndex: null,
           singNoteAutoAdvancePending: outcome.evaluation.correct,
+          micOffWarning: !outcome.evaluation.correct && pitchDebugIndicatesNoPitch(get().pitchDebug),
         });
         get().refreshDashboard();
 
@@ -492,10 +508,12 @@ export const useAppStore = create<StoreState>((set, get) => ({
           sessionMeta: service.getSessionMeta(),
           singingNoteIndex: null,
           singNoteAutoAdvancePending: false,
+          micOffWarning: pitchDebugIndicatesNoPitch(get().pitchDebug),
         });
         get().refreshDashboard();
       }
     } catch (error) {
+      console.error('[store:sing] recording failed', error);
       const message = error instanceof Error && error.message
         ? error.message
         : 'Aufnahme fehlgeschlagen.';
@@ -547,6 +565,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
         singingNoteIndex: null,
         melodyRecordingProgress: null,
         singNoteAutoAdvancePending: false,
+        micOffWarning: false,
       });
     } finally {
       set((state) => ({ loading: { ...state.loading, nextExercise: false } }));
@@ -566,6 +585,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
       melodyRecordingProgress: null,
       summary: null,
       singNoteAutoAdvancePending: false,
+      micOffWarning: false,
     });
     get().refreshDashboard();
   },
@@ -642,6 +662,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
     }
   },
 
+  setGuidedFamily(value) { set({ guidedFamily: value }); },
   setSelectedFamily(value) {
     set({
       selectedFamily: value,

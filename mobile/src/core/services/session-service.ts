@@ -747,8 +747,8 @@ export class SessionService {
     if (!this.activeSession) return;
     this.activeSession = null;
     this.currentEvaluation = null;
-    void this.audioPromptPort.stop().catch(() => {});
-    void this.pitchCapturePort.stop().catch(() => {});
+    void this.audioPromptPort.stop().catch((error) => { console.error('[session:abort] audioPromptPort.stop failed', error); });
+    void this.pitchCapturePort.stop().catch((error) => { console.error('[session:abort] pitchCapturePort.stop failed', error); });
   }
 
   /** Returns true if the active session has no evaluated exercises yet. */
@@ -807,8 +807,8 @@ export class SessionService {
     this.currentEvaluation = null;
     logServiceDebug('session_cleared');
     // Cleanup should not block session finalization if native audio modules stall.
-    void this.audioPromptPort.stop().catch(() => {});
-    void this.pitchCapturePort.stop().catch(() => {});
+    void this.audioPromptPort.stop().catch((error) => { console.error('[session:end] audioPromptPort.stop failed', error); });
+    void this.pitchCapturePort.stop().catch((error) => { console.error('[session:end] pitchCapturePort.stop failed', error); });
 
     logServiceDebug('completed', {
       summaryMode: summary.mode,
