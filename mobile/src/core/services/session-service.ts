@@ -3,6 +3,7 @@ import { ExerciseEvaluator } from '../domain/exercise-evaluator';
 import { ExerciseGenerator } from '../domain/exercise-generator';
 import { createDefaultProgressRecord, ProgressionEngine } from '../domain/progression-engine';
 import { SessionPlanner } from '../domain/session-planner';
+import { noteFromPitch } from '../utils/pitch';
 import type {
   AppSettings,
   Clef,
@@ -88,8 +89,15 @@ export type MelodyCaptureAttemptOutcome = {
   contour: {
     detectedMidis: number[];
     detectedFrequencies: number[];
+    segmentDurationMs?: number;
+    detectedMidisBySegment?: Array<number | null>;
+    detectedFrequenciesBySegment?: Array<number | null>;
+    detectedMidisBySlot?: Array<number | null>;
     experimentalDetectedMidis?: number[];
     experimentalDetectedFrequencies?: number[];
+    experimentalDetectedMidisBySegment?: Array<number | null>;
+    experimentalDetectedFrequenciesBySegment?: Array<number | null>;
+    experimentalDetectedMidisBySlot?: Array<number | null>;
   } | null;
   noteResults: MelodyNoteResult[];
 };
@@ -100,7 +108,7 @@ export const COUNT_IN_BEATS = 4;
 /** Compute note-by-note results from evaluation detail. */
 export function computeMelodyNoteResults(
   targetMidis: number[],
-  normalizedDetected: number[],
+  normalizedDetected: Array<number | null | undefined>,
   toleranceCents: number,
 ): MelodyNoteResult[] {
   return targetMidis.map((targetMidi, i) => {
@@ -128,6 +136,46 @@ export function buildMelodyTimingModel(bpm: number, totalBeats: number): MelodyT
   const segmentMs = Math.round(noteDurationMs * 0.9);
   const captureDurationMs = totalBeats * noteDurationMs + 500;
   return { bpm: safeBpm, noteDurationMs, gapMs, segmentMs, captureDurationMs };
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)] ?? null;
+}
+
+function alignFrequenciesBySlot(
+  frequenciesBySegment: Array<number | null | undefined> | undefined,
+  segmentDurationMs: number | undefined,
+  notes: MelodyNote[],
+  noteDurationMs: number,
+): Array<number | null> | null {
+  if (!Array.isArray(frequenciesBySegment) || frequenciesBySegment.length === 0) return null;
+  if (!Number.isFinite(segmentDurationMs) || !segmentDurationMs || segmentDurationMs <= 0) return null;
+  if (notes.length === 0 || !Number.isFinite(noteDurationMs) || noteDurationMs <= 0) return null;
+
+  const slotResults: Array<number | null> = [];
+  let slotStartMs = 0;
+  for (let noteIdx = 0; noteIdx < notes.length; noteIdx += 1) {
+    const note = notes[noteIdx];
+    const slotDurationMs = noteBeats(note?.duration ?? 'quarter') * noteDurationMs;
+    const slotEndMs = slotStartMs + slotDurationMs;
+
+    const inSlot: number[] = [];
+    for (let segmentIdx = 0; segmentIdx < frequenciesBySegment.length; segmentIdx += 1) {
+      const frequency = frequenciesBySegment[segmentIdx];
+      if (!Number.isFinite(frequency)) continue;
+      const segmentMidMs = (segmentIdx + 0.5) * segmentDurationMs;
+      if (segmentMidMs >= slotStartMs && segmentMidMs < slotEndMs) {
+        inSlot.push(Number(frequency));
+      }
+    }
+
+    slotResults.push(median(inSlot));
+    slotStartMs = slotEndMs;
+  }
+
+  return slotResults;
 }
 
 function toLocalDateKey(date: Date): string {
@@ -188,8 +236,13 @@ export class SessionService {
     capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{
       detectedMidis: number[];
       detectedFrequencies: number[];
+      segmentDurationMs?: number;
+      detectedMidisBySegment?: Array<number | null>;
+      detectedFrequenciesBySegment?: Array<number | null>;
       experimentalDetectedMidis?: number[];
       experimentalDetectedFrequencies?: number[];
+      experimentalDetectedMidisBySegment?: Array<number | null>;
+      experimentalDetectedFrequenciesBySegment?: Array<number | null>;
     } | null>;
     setDebugListener?: (listener: ((snapshot: unknown) => void) | null) => void;
     stop: () => Promise<void>;
@@ -224,8 +277,13 @@ export class SessionService {
     capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{
       detectedMidis: number[];
       detectedFrequencies: number[];
+      segmentDurationMs?: number;
+      detectedMidisBySegment?: Array<number | null>;
+      detectedFrequenciesBySegment?: Array<number | null>;
       experimentalDetectedMidis?: number[];
       experimentalDetectedFrequencies?: number[];
+      experimentalDetectedMidisBySegment?: Array<number | null>;
+      experimentalDetectedFrequenciesBySegment?: Array<number | null>;
     } | null>;
     setDebugListener?: (listener: ((snapshot: unknown) => void) | null) => void;
     stop: () => Promise<void>;
@@ -584,21 +642,50 @@ export class SessionService {
       }
     }
 
-    let contour: { detectedMidis: number[]; detectedFrequencies: number[] } | null = null;
+    let contour: {
+      detectedMidis: number[];
+      detectedFrequencies: number[];
+      segmentDurationMs?: number;
+      detectedMidisBySegment?: Array<number | null>;
+      detectedFrequenciesBySegment?: Array<number | null>;
+      experimentalDetectedMidis?: number[];
+      experimentalDetectedFrequencies?: number[];
+      experimentalDetectedMidisBySegment?: Array<number | null>;
+      experimentalDetectedFrequenciesBySegment?: Array<number | null>;
+    } | null = null;
     try {
       contour = await this.pitchCapturePort.capturePitchContour(timing.captureDurationMs, timing.segmentMs);
     } finally {
       noteTimers.forEach(clearTimeout);
     }
 
+    const detectedMidisBySlot = alignFrequenciesBySlot(
+      contour?.detectedFrequenciesBySegment,
+      contour?.segmentDurationMs,
+      melodyNoteObjects,
+      timing.noteDurationMs,
+    )?.map((frequency) => (frequency == null ? null : noteFromPitch(frequency))) ?? null;
+    const experimentalDetectedMidisBySlot = alignFrequenciesBySlot(
+      contour?.experimentalDetectedFrequenciesBySegment,
+      contour?.segmentDurationMs,
+      melodyNoteObjects,
+      timing.noteDurationMs,
+    )?.map((frequency) => (frequency == null ? null : noteFromPitch(frequency))) ?? null;
+
     const evaluation = this.evaluator.evaluate(
       exercise,
-      contour ?? { detectedMidis: [] },
+      contour
+        ? {
+          ...contour,
+          detectedMidisBySlot,
+          experimentalDetectedMidisBySlot,
+        }
+        : { detectedMidis: [] },
       { toleranceCents },
     );
 
     const normalizedDetected = Array.isArray((evaluation.accuracyDetail as any).normalizedDetected)
-      ? ((evaluation.accuracyDetail as any).normalizedDetected as number[])
+      ? ((evaluation.accuracyDetail as any).normalizedDetected as Array<number | null>)
       : [];
     const noteResults = computeMelodyNoteResults(targetMidis, normalizedDetected, toleranceCents);
 
@@ -606,7 +693,13 @@ export class SessionService {
       exercise,
       evaluation,
       feedback: evaluation.feedback,
-      contour,
+      contour: contour
+        ? {
+          ...contour,
+          detectedMidisBySlot: detectedMidisBySlot ?? undefined,
+          experimentalDetectedMidisBySlot: experimentalDetectedMidisBySlot ?? undefined,
+        }
+        : null,
       noteResults,
     };
   }

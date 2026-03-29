@@ -20,7 +20,7 @@ describe('buildMelodyTimingModel', () => {
     expect(model.bpm).toBe(60);
   });
 
-  it('computes capture duration as totalBeats * noteDuration + 500 buffer', () => {
+  it('computes capture duration as sung beats + tail buffer after count-in completes', () => {
     const model = buildMelodyTimingModel(60, 4);
     expect(model.captureDurationMs).toBe(4 * 1000 + 500);
   });
@@ -165,7 +165,7 @@ describe('SessionService melody trainer', () => {
     expect(service.regenerateMelody()).toBeNull();
   });
 
-  it('captureSingingAttempt fires count-in callbacks before capture', async () => {
+  it('captureSingingAttempt runs capture in parallel with count-in callbacks', async () => {
     const beats: number[] = [];
     const ticks: Array<{ accent: boolean; durationMs: number | undefined }> = [];
     const callOrder: string[] = [];
@@ -210,7 +210,7 @@ describe('SessionService melody trainer', () => {
     expect(ticks.slice(1).every((tick) => tick.accent === false)).toBe(true);
     expect(callOrder[0]).toBe('permission_preflight');
     expect(callOrder.indexOf('count_in_tick')).toBeGreaterThan(callOrder.indexOf('permission_preflight'));
-    expect(callOrder.indexOf('capture_started')).toBeGreaterThan(callOrder.indexOf('count_in_tick'));
+    expect(callOrder.indexOf('capture_started')).toBeGreaterThan(callOrder.indexOf('permission_preflight'));
     expect(result).not.toBeNull();
   });
 
@@ -219,7 +219,7 @@ describe('SessionService melody trainer', () => {
     // duration is 300ms. The mock capturePitchContour resolves synchronously which means
     // the timers are cleared before they can fire (intended: the service fires them during
     // the real async capture window). We verify the service attempts to schedule them by
-    // providing a slow capture that allows the first timer (delay 0) to fire.
+    // providing a slow capture that allows the first timer (delayed by preroll) to fire.
     const noteIndices: number[] = [];
     const service = new SessionService(
       createMockStorage(),
@@ -227,9 +227,9 @@ describe('SessionService melody trainer', () => {
       {
         async capturePitchSample() { return null; },
         capturePitchContour(durationMs: number, segmentMs: number): Promise<{ detectedMidis: number[]; detectedFrequencies: number[] }> {
-          // Yield to allow delay-0 setTimeout (index 0) to fire.
+          // Yield long enough for the first note timer to fire after preroll.
           return new Promise((resolve) =>
-            setTimeout(() => resolve({ detectedMidis: [60, 62, 64], detectedFrequencies: [262, 294, 330] }), 10),
+            setTimeout(() => resolve({ detectedMidis: [60, 62, 64], detectedFrequencies: [262, 294, 330] }), 1_500),
           );
         },
         async stop() {},
@@ -243,7 +243,7 @@ describe('SessionService melody trainer', () => {
       onNoteIndex: (idx) => noteIndices.push(idx),
     });
 
-    // Index 0 fires at delay 0 and should complete before the 10ms capture resolves.
+    // Index 0 fires after preroll and should complete before capture resolves.
     expect(noteIndices).toContain(0);
   });
 

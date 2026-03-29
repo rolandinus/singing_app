@@ -44,4 +44,19 @@ describe('ExerciseEvaluator melody', () => {
     expect(result.correct).toBe(false);
     expect(result.score).toBeLessThan(0.4);
   });
+
+  it('uses slot-aligned melody detection when provided', () => {
+    const evaluator = new ExerciseEvaluator();
+    const exercise = makeMelodyExercise([60, 62, 64], 0.9);
+
+    const result = evaluator.evaluate(
+      exercise,
+      { detectedMidisBySlot: [60, null, 64] },
+      { toleranceCents: 50 },
+    );
+
+    expect(result.correct).toBe(false);
+    expect(result.score).toBeLessThan(0.8);
+    expect(Array.isArray((result.accuracyDetail as { normalizedDetected?: unknown }).normalizedDetected)).toBe(true);
+  });
 });

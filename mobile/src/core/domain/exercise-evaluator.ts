@@ -48,10 +48,68 @@ export class ExerciseEvaluator {
       const detectedMidis = Array.isArray(submission?.detectedMidis)
         ? (submission.detectedMidis as number[]).filter((midi) => Number.isFinite(midi))
         : [];
+      const detectedMidisBySlot = Array.isArray(submission?.detectedMidisBySlot)
+        ? (submission.detectedMidisBySlot as Array<number | null>).map((value) => (
+          Number.isFinite(value) ? Number(value) : null
+        ))
+        : null;
       const minAccuracy = Number((exercise.expectedAnswer as any).minAccuracy ?? 0.65);
       const toleranceCents = Number(options.toleranceCents ?? 50);
 
-      if (targetMidis.length === 0 || detectedMidis.length === 0) {
+      if (targetMidis.length === 0) {
+        return {
+          correct: false,
+          score: 0,
+          accuracyDetail: { reason: 'no_pitch' },
+          feedback: 'Keine stabile Tonfolge erkannt',
+          telemetry: {},
+        };
+      }
+
+      if (detectedMidisBySlot) {
+        const normalizedDetected: Array<number | null> = targetMidis.map((_, idx) => detectedMidisBySlot[idx] ?? null);
+        const detectedCount = normalizedDetected.filter((value) => Number.isFinite(value)).length;
+        if (detectedCount === 0) {
+          return {
+            correct: false,
+            score: 0,
+            accuracyDetail: { reason: 'no_pitch' },
+            feedback: 'Keine stabile Tonfolge erkannt',
+            telemetry: {},
+          };
+        }
+
+        const noteScores = targetMidis.map((targetMidi, idx) => {
+          const detectedMidi = normalizedDetected[idx];
+          if (!Number.isFinite(detectedMidi)) return 0;
+          const centsOff = (Number(detectedMidi) - targetMidi) * 100;
+          return clamp01(1 - Math.abs(centsOff) / (toleranceCents * 2));
+        });
+        const averageNoteScore = noteScores.reduce((sum, value) => sum + value, 0) / noteScores.length;
+        const lengthCoverage = detectedCount / targetMidis.length;
+        const score = clamp01(averageNoteScore);
+        const correct = score >= minAccuracy;
+
+        return {
+          correct,
+          score,
+          accuracyDetail: {
+            targetMidis,
+            detectedMidis: normalizedDetected.filter((midi): midi is number => Number.isFinite(midi)),
+            normalizedDetected,
+            detectedMidisBySlot: normalizedDetected,
+            minAccuracy,
+            toleranceCents,
+            lengthCoverage,
+          },
+          feedback: correct
+            ? `Melodie korrekt (${Math.round(score * 100)}%)`
+            : `Melodie abweichend (${Math.round(score * 100)}%)`,
+          telemetry: {},
+        };
+      }
+
+      if (detectedMidis.length === 0) {
         return {
           correct: false,
           score: 0,
