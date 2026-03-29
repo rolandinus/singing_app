@@ -8,6 +8,7 @@ import type {
   Clef,
   EvaluationResult,
   Exercise,
+  ExerciseFamily,
   MelodyNote,
   MelodyOptions,
   NoteType,
@@ -296,13 +297,13 @@ export class SessionService {
     this.pitchCapturePort.setDebugListener?.(listener);
   }
 
-  startGuidedSession() {
+  startGuidedSession(includeFamilies?: ExerciseFamily[] | null) {
     const queue = this.planner.generateGuidedSession({
       enabledClefs: this.settings.enabledClefs,
       progressBySkill: this.progressBySkill,
       exerciseCount: this.settings.dailyGoalExercises,
       generator: this.generator,
-      includeFamilies: ['visual', 'aural', 'singing'],
+      includeFamilies: includeFamilies ?? ['visual', 'aural', 'singing'],
     }) as Exercise[];
     return this.startSession('guided', queue);
   }

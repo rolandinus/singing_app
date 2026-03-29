@@ -5,8 +5,16 @@ import { Card } from '../../src/ui/components/Card';
 import { ProgressExplainerCard } from '../../src/ui/components/ProgressExplainerCard';
 import { Screen } from '../../src/ui/components/Screen';
 import { useAppStore } from '../../src/state/use-app-store';
-import { clefLabel, localeTag, modeLabel, skillLabel, t } from '../../src/core/i18n/translator';
+import { clefLabel, localeTag, modeLabel, skillLabel, t, type TranslationKey } from '../../src/core/i18n/translator';
+import type { ExerciseFamily } from '../../src/core/types';
 import { useThemeColors } from '../../src/ui/hooks/use-theme-colors';
+
+const GUIDED_FAMILY_OPTIONS: Array<{ value: ExerciseFamily | null; labelKey: TranslationKey }> = [
+  { value: null, labelKey: 'family_all' },
+  { value: 'visual', labelKey: 'family_visual' },
+  { value: 'aural', labelKey: 'family_aural' },
+  { value: 'singing', labelKey: 'family_singing' },
+];
 
 function masteryColor(mastery: number): string {
   if (mastery < 40) return '#64748b';
@@ -32,6 +40,8 @@ export default function DashboardScreen() {
   const skillRows = useAppStore((s) => s.skillRows);
   const loading = useAppStore((s) => s.loading);
   const startGuided = useAppStore((s) => s.startGuided);
+  const guidedFamily = useAppStore((s) => s.guidedFamily);
+  const setGuidedFamily = useAppStore((s) => s.setGuidedFamily);
 
   const locale = settings.locale;
   const completedToday = recentSessions
@@ -59,6 +69,29 @@ export default function DashboardScreen() {
             </View>
           </>
         ) : null}
+        <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '600' }}>{t(locale, 'family')}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {GUIDED_FAMILY_OPTIONS.map(({ value, labelKey }) => (
+            <Pressable
+              key={String(value)}
+              style={[
+                { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 999, paddingHorizontal: 12, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+                guidedFamily === value && { backgroundColor: colors.toggleActiveBg, borderColor: colors.toggleActiveBorder },
+              ]}
+              onPress={() => setGuidedFamily(value)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: guidedFamily === value }}
+            >
+              <Text style={[
+                { color: colors.textSecondary },
+                guidedFamily === value && { color: colors.primaryStrong, fontWeight: '700' },
+              ]}>
+                {t(locale, labelKey)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
         <Pressable
           style={[
             { backgroundColor: colors.primaryStrong, minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

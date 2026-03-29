@@ -90,6 +90,7 @@ type StoreState = {
   feedback: { text: string; isCorrect: boolean };
   answerState: { selectedChoice: string | null; expectedChoice: string | null };
   summary: SessionSummary | null;
+  guidedFamily: ExerciseFamily | null;
   selectedFamily: ExerciseFamily;
   selectedSkill: SkillKey;
   selectedClef: Clef;
@@ -145,6 +146,7 @@ type StoreState = {
   abortSession: () => void;
   endSession: () => Promise<void>;
   saveSettings: (partial: Partial<AppSettings>) => Promise<void>;
+  setGuidedFamily: (value: ExerciseFamily | null) => void;
   setSelectedFamily: (value: ExerciseFamily) => void;
   setSelectedSkill: (value: SkillKey) => void;
   setSelectedClef: (value: Clef) => void;
@@ -176,6 +178,7 @@ export const useAppStore = create<StoreState>((set, get) => ({
   feedback: { text: '', isCorrect: false },
   answerState: { selectedChoice: null, expectedChoice: null },
   summary: null,
+  guidedFamily: null,
   selectedFamily: 'visual',
   selectedSkill: firstSkillForFamily('visual'),
   selectedClef: 'treble',
@@ -234,7 +237,9 @@ export const useAppStore = create<StoreState>((set, get) => ({
   async startGuided() {
     set((state) => ({ loading: { ...state.loading, startGuided: true } }));
     try {
-      const started = service.startGuidedSession();
+      const { guidedFamily } = get();
+      const includeFamilies: ExerciseFamily[] = guidedFamily ? [guidedFamily] : ['visual', 'aural', 'singing'];
+      const started = service.startGuidedSession(includeFamilies);
       if (!started.ok) {
         set({ feedback: { text: started.error, isCorrect: false } });
         return;
