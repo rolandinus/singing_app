@@ -39,3 +39,11 @@ read WORKLOG.md
 - Do not opt out of React Native New Architecture with `newArchEnabled: false`. Keep the app on the default Expo SDK 54+ architecture path.
 
 We will work now only in the mobile app.
+
+## Test order (mobile)
+
+- Before running any other test command, run `npm run typecheck` in `mobile/`.
+- Only after `npm run typecheck` passes, run other tests such as `npm test`.
+
+### No silent errors
+when catching errors always console.log them, we will remove console log for production in a later step

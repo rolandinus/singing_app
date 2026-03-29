@@ -1,0 +1,1 @@
+Improve metronome sounds, to sound a bit more like some clicking. Inspect metronome sounds from the original browser app, this sounded really nice
