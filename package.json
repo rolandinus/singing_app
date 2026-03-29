@@ -10,6 +10,8 @@
     "android:emulator:stop": "./scripts/android-emulator-stop.sh",
     "android:test:mobile": "./scripts/android-mobile-maestro.sh",
     "android:build:apk": "./scripts/android-build-debug-apk.sh",
+    "android:build:apk:debug": "BUILD_VARIANT=debug ./scripts/android-build-debug-apk.sh",
+    "android:build:apk:release": "BUILD_VARIANT=release ./scripts/android-build-debug-apk.sh",
     "android:test:firebase:robo": "./scripts/android-firebase-robo.sh",
     "android:test:firebase:robo:build": "npm run android:build:apk && npm run android:test:firebase:robo",
     "test:e2e": "playwright test",
