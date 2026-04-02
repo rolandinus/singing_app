@@ -396,7 +396,7 @@ export default function PracticeScreen() {
 
           <Pressable
             style={[
-              { backgroundColor: '#059669', minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+              { backgroundColor: colors.success, minHeight: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
               loading.startCustom && { opacity: 0.45 },
             ]}
             onPress={() => void startCustom()}
@@ -417,15 +417,15 @@ export default function PracticeScreen() {
           </Text>
 
           <View style={{ height: 8, borderRadius: 99, backgroundColor: colors.masteryTrack, overflow: 'hidden' }}>
-            <View style={{ height: 8, backgroundColor: '#10b981', width: `${progressPercent}%` }} />
+            <View style={{ height: 8, backgroundColor: colors.success, width: `${progressPercent}%` }} />
           </View>
 
           {currentExercise ? (
             <>
               {/* sing_melody gets its own dedicated trainer panel */}
               {currentExercise.skillKey === 'sing_melody' && micOffWarning ? (
-                <View style={{ borderWidth: 1, borderColor: '#f59e0b', borderRadius: 8, backgroundColor: '#fffbeb', padding: 10 }}>
-                  <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 13 }}>{t(locale, 'mic_off_warning')}</Text>
+                <View style={{ borderWidth: 1, borderColor: colors.warning, borderRadius: 8, backgroundColor: colors.warningContainer, padding: 10 }}>
+                  <Text style={{ color: colors.warningText, fontWeight: '700', fontSize: 13 }}>{t(locale, 'mic_off_warning')}</Text>
                 </View>
               ) : null}
               {currentExercise.skillKey === 'sing_melody' ? (
@@ -519,8 +519,8 @@ export default function PracticeScreen() {
                   ) : null}
 
                   {currentExercise.family === 'singing' && micOffWarning ? (
-                    <View style={{ borderWidth: 1, borderColor: '#f59e0b', borderRadius: 8, backgroundColor: '#fffbeb', padding: 10 }}>
-                      <Text style={{ color: '#92400e', fontWeight: '700', fontSize: 13 }}>{t(locale, 'mic_off_warning')}</Text>
+                    <View style={{ borderWidth: 1, borderColor: colors.warning, borderRadius: 8, backgroundColor: colors.warningContainer, padding: 10 }}>
+                      <Text style={{ color: colors.warningText, fontWeight: '700', fontSize: 13 }}>{t(locale, 'mic_off_warning')}</Text>
                     </View>
                   ) : null}
 
@@ -560,8 +560,8 @@ export default function PracticeScreen() {
                         style={[
                           { borderWidth: 1, borderColor: colors.borderLight, borderRadius: 8, minHeight: 44, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: colors.surfaceNeutral },
                           selected && { borderColor: colors.primary },
-                          isCorrectChoice && { borderColor: '#10b981', backgroundColor: colors.choiceCorrectBg },
-                          isWrongSelected && { borderColor: '#f43f5e', backgroundColor: colors.choiceWrongBg },
+                          isCorrectChoice && { borderColor: colors.success, backgroundColor: colors.choiceCorrectBg },
+                          isWrongSelected && { borderColor: colors.danger, backgroundColor: colors.choiceWrongBg },
                         ]}
                         onPress={() => void submitChoice(key)}
                         disabled={Boolean(answerState.selectedChoice) || loading.submitChoice || loading.captureSingingAttempt}
@@ -626,22 +626,22 @@ export default function PracticeScreen() {
 
               {showEndSessionConfirm ? (
                 <View style={{ marginTop: 8, borderWidth: 1, borderColor: colors.borderDanger, backgroundColor: colors.surfaceDanger, borderRadius: 10, padding: 12, gap: 10 }}>
-                  <Text style={{ color: '#881337', fontWeight: '700', fontSize: 15 }}>{t(locale, 'confirm_end_title')}</Text>
-                  <Text style={{ color: '#9f1239', fontSize: 13 }}>{t(locale, 'confirm_end_body')}</Text>
+                  <Text style={{ color: colors.dangerText, fontWeight: '700', fontSize: 15 }}>{t(locale, 'confirm_end_title')}</Text>
+                  <Text style={{ color: colors.dangerText, fontSize: 13 }}>{t(locale, 'confirm_end_body')}</Text>
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <Pressable
-                      style={{ flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, borderWidth: 1, borderColor: '#fda4af', backgroundColor: colors.surface }}
+                      style={{ flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, borderWidth: 1, borderColor: colors.borderDanger, backgroundColor: colors.surface }}
                       onPress={() => {
                         logEndSessionDebug('end_session_cancelled');
                         setShowEndSessionConfirm(false);
                       }}
                       accessibilityRole="button"
                     >
-                      <Text style={{ color: '#9f1239', fontWeight: '600' }}>{t(locale, 'cancel')}</Text>
+                      <Text style={{ color: colors.dangerText, fontWeight: '600' }}>{t(locale, 'cancel')}</Text>
                     </Pressable>
                     <Pressable
                       style={[
-                        { flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, backgroundColor: '#be123c' },
+                        { flex: 1, minHeight: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, backgroundColor: colors.danger },
                         loading.endSession && { opacity: 0.45 },
                       ]}
                       onPress={() => {

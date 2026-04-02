@@ -16,10 +16,10 @@ const GUIDED_FAMILY_OPTIONS: Array<{ value: ExerciseFamily | null; labelKey: Tra
   { value: 'singing', labelKey: 'family_singing' },
 ];
 
-function masteryColor(mastery: number): string {
-  if (mastery < 40) return '#64748b';
-  if (mastery < 80) return '#d97706';
-  return '#16a34a';
+function masteryColor(mastery: number, colors: ReturnType<typeof useThemeColors>): string {
+  if (mastery < 40) return colors.masteryLow;
+  if (mastery < 80) return colors.masteryMid;
+  return colors.masteryHigh;
 }
 
 function isToday(isoDate: string): boolean {
@@ -117,7 +117,7 @@ export default function DashboardScreen() {
         ) : (
           recentSessions.slice(0, 5).map((session) => {
             const accuracy = Math.round(Number(session.summary?.accuracy ?? 0) * 100);
-            const badgeColor = accuracy < 40 ? '#64748b' : accuracy < 80 ? '#d97706' : '#16a34a';
+            const badgeColor = masteryColor(accuracy, colors);
 
             return (
               <View
@@ -159,7 +159,7 @@ export default function DashboardScreen() {
             <View key={clef} style={{ gap: 8, paddingTop: 4 }}>
               <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '700' }}>{clefLabel(locale, clef)}</Text>
               {rows.map((row) => {
-                const fillColor = masteryColor(row.mastery);
+                const fillColor = masteryColor(row.mastery, colors);
                 return (
                   <View key={`${row.clef}.${row.skillKey}`} style={{ gap: 6, paddingVertical: 4 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, type ViewStyle } from 'react-native';
 import { useThemeColors } from '../hooks/use-theme-colors';
+import { radius, spacing } from '../tokens/spacing';
 
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
   const colors = useThemeColors();
@@ -9,11 +10,11 @@ export function Card({ children, style }: { children: React.ReactNode; style?: V
       style={[
         {
           backgroundColor: colors.surface,
-          borderRadius: 12,
+          borderRadius: radius.lg,
           borderWidth: 1,
           borderColor: colors.border,
-          padding: 14,
-          gap: 8,
+          padding: spacing.md,
+          gap: spacing.sm,
         },
         style,
       ]}

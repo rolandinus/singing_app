@@ -2,14 +2,16 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { t } from '../../src/core/i18n/translator';
 import { useAppStore } from '../../src/state/use-app-store';
+import { useThemeColors } from '../../src/ui/hooks/use-theme-colors';
 
 export default function TabsLayout() {
   const locale = useAppStore((s) => s.settings.locale);
+  const colors = useThemeColors();
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#1d4ed8',
+        tabBarActiveTintColor: colors.primary,
       }}
     >
       <Tabs.Screen name="index" options={{ title: t(locale, 'nav_dashboard') }} />
