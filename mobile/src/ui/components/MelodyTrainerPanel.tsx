@@ -46,16 +46,6 @@ function getMelodyNoteObjects(exercise: Exercise): MelodyNote[] {
   });
 }
 
-/** Extract pitch strings from MelodyNote array. */
-function getMelodyNotes(exercise: Exercise): string[] {
-  return getMelodyNoteObjects(exercise).map((n) => n.pitch);
-}
-
-/** Extract duration array from MelodyNote array. */
-function getMelodyDurations(exercise: Exercise): NoteType[] {
-  return getMelodyNoteObjects(exercise).map((n) => n.duration);
-}
-
 function noteBeats(duration: NoteType): number {
   return duration === 'half' ? 2 : 1;
 }
@@ -147,8 +137,7 @@ function TappableStaff({
     )
     : [];
   const staffNodes = buildStaffNodes(clef, noteColor);
-  const allNodes = [...staffNodes, ...noteNodes, ...overlayNodes];
-  const tree = toReactNativeSvgTree(allNodes);
+  const tree = toReactNativeSvgTree([...staffNodes, ...noteNodes, ...overlayNodes]);
 
   const NOTE_START_X = STAFF_MARGIN_LEFT + 110;
   const availableWidth = SVG_STAFF_WIDTH - NOTE_START_X - STAFF_MARGIN_LEFT;
@@ -157,7 +146,6 @@ function TappableStaff({
   const normalizedProgress = recordingProgress == null ? null : Math.max(0, Math.min(1, recordingProgress));
   const maxBeatIndex = Math.max(0, totalBeatSlots - 1);
   // Map progress to beat index space (0..totalBeatSlots), then clamp to rendered slots.
-  // This keeps cursor beat boundaries aligned with note-highlight timing.
   const cursorBeatPosition = normalizedProgress == null ? null : normalizedProgress * totalBeatSlots;
   const cursorX = cursorBeatPosition == null ? null : NOTE_START_X + Math.min(cursorBeatPosition, maxBeatIndex) * NOTE_SPACING;
   const cursorTopY = STAFF_MARGIN_TOP - 14;
@@ -183,9 +171,8 @@ function TappableStaff({
         {/* Correctness indicators above staff notes */}
         {noteResults && noteResults.map((result, i) => {
           const cx = NOTE_START_X + (slotIndices[i] ?? i) * NOTE_SPACING;
-          const cy = 8;
           const color = result.correct ? '#10b981' : '#f43f5e';
-          return <Circle key={`result-${i}`} cx={cx} cy={cy} r={5} fill={color} />;
+          return <Circle key={`result-${i}`} cx={cx} cy={8} r={5} fill={color} />;
         })}
       </Svg>
 
@@ -324,11 +311,10 @@ export function MelodyTrainerPanel({
   onChangeBpm,
 }: Props) {
   const colors = useThemeColors();
-  const noteColor = colors.textPrimary;
-  const notes = getMelodyNotes(exercise);
-  const durations = getMelodyDurations(exercise);
+  const noteObjects = getMelodyNoteObjects(exercise);
+  const notes = noteObjects.map((n) => n.pitch);
+  const durations = noteObjects.map((n) => n.duration);
   const isCapturing = loadingCapture;
-  const isCountingIn = isCapturing && countInBeat !== null;
   const hasResult = noteResults.length > 0;
   const renderedResultNotes = buildMelodyResultRenderNotes(noteResults, durations);
 
@@ -348,13 +334,13 @@ export function MelodyTrainerPanel({
         clef={exercise.clef}
         notes={notes}
         durations={durations}
-        highlightIndex={isCapturing && !isCountingIn ? singingNoteIndex : null}
+        highlightIndex={isCapturing && countInBeat === null ? singingNoteIndex : null}
         overlayNote={liveDetectedNote}
         overlayIndex={liveDetectedNoteIndex}
         overlayDuration={liveDetectedNoteIndex != null ? (durations[liveDetectedNoteIndex] ?? 'quarter') : 'quarter'}
-        recordingProgress={isCapturing && !isCountingIn ? recordingProgress : null}
+        recordingProgress={isCapturing && countInBeat === null ? recordingProgress : null}
         onTapNote={!isCapturing ? onTapNote : undefined}
-        noteColor={noteColor}
+        noteColor={colors.textPrimary}
       />
 
       {/* Count-in indicator */}
@@ -370,7 +356,7 @@ export function MelodyTrainerPanel({
             durations={durations}
             noteResults={noteResults}
             renderedNotes={renderedResultNotes}
-            noteColor={noteColor}
+            noteColor={colors.textPrimary}
           />
           <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
             {noteResults.map((result, i) => (

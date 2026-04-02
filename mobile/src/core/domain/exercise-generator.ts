@@ -65,21 +65,16 @@ function getLevelRange(clef: Clef, level: number) {
 function getNaturalPool(clef: Clef, level: number): number[] {
   const range = getLevelRange(clef, level);
   const pool = getNaturalMidiPool(range.minMidi, range.maxMidi);
-
-  if (pool.length === 0) {
-    return getNaturalMidiPool(CLEF_NOTE_RANGES[clef].minMidi, CLEF_NOTE_RANGES[clef].maxMidi);
-  }
-
-  return pool;
+  return pool.length > 0
+    ? pool
+    : getNaturalMidiPool(CLEF_NOTE_RANGES[clef].minMidi, CLEF_NOTE_RANGES[clef].maxMidi);
 }
 
 function generateIntervalPair(clef: Clef, level: number) {
   const pool = getNaturalPool(clef, level);
-  const steps = getIntervalStepsForLevel(level);
-  const weightedSteps = buildWeightedIntervalStepPool(steps);
+  const weightedSteps = buildWeightedIntervalStepPool(getIntervalStepsForLevel(level));
 
-  let attempts = 0;
-  while (attempts < 100) {
+  for (let attempts = 0; attempts < 100; attempts += 1) {
     const intervalStep = randomChoice(weightedSteps);
     const index = Math.floor(Math.random() * pool.length);
     const direction = Math.random() < 0.5 ? 1 : -1;
@@ -90,14 +85,8 @@ function generateIntervalPair(clef: Clef, level: number) {
     }
 
     if (targetIndex >= 0 && targetIndex < pool.length) {
-      return {
-        firstMidi: pool[index],
-        secondMidi: pool[targetIndex],
-        intervalStep,
-      };
+      return { firstMidi: pool[index], secondMidi: pool[targetIndex], intervalStep };
     }
-
-    attempts += 1;
   }
 
   return {
@@ -135,43 +124,24 @@ function buildIntervalChoiceLabels(
 
 /** Return a random note duration: half note with 40% chance for first note, 25% for others. */
 function randomNoteDuration(isFirst: boolean): NoteType {
-  const chanceForHalf = isFirst ? 0.4 : 0.25;
-  return Math.random() < chanceForHalf ? 'half' : 'quarter';
+  return Math.random() < (isFirst ? 0.4 : 0.25) ? 'half' : 'quarter';
 }
 
-type MelodyNoteRaw = { midi: number; duration: NoteType };
+const FIRST_NOTE_MIDI: Record<string, number> = { C2: 36, C4: 60, C6: 84 };
 
-function generateMelodyNotes(clef: Clef, level: number, options: MelodyOptions): MelodyNoteRaw[] {
+function generateMelodyNotes(clef: Clef, level: number, options: MelodyOptions): { midi: number; duration: NoteType }[] {
   const pool = getNaturalPool(clef, level).sort((a, b) => a - b);
-  if (pool.length === 0) {
-    return [
-      { midi: 60, duration: 'quarter' },
-      { midi: 62, duration: 'quarter' },
-      { midi: 64, duration: 'half' },
-    ];
-  }
 
-  // Resolve start note index from firstNoteMode.
-  let startMidi: number;
-  if (options.firstNoteMode === 'C2') {
-    const c2Midi = 36; // MIDI 36 = C2
-    startMidi = pool.reduce((closest, m) => (Math.abs(m - c2Midi) < Math.abs(closest - c2Midi) ? m : closest), pool[0]);
-  } else if (options.firstNoteMode === 'C4') {
-    const c4Midi = 60; // MIDI 60 = C4
-    startMidi = pool.reduce((closest, m) => (Math.abs(m - c4Midi) < Math.abs(closest - c4Midi) ? m : closest), pool[0]);
-  } else if (options.firstNoteMode === 'C6') {
-    const c6Midi = 84; // MIDI 84 = C6
-    startMidi = pool.reduce((closest, m) => (Math.abs(m - c6Midi) < Math.abs(closest - c6Midi) ? m : closest), pool[0]);
-  } else {
-    startMidi = randomChoice(pool);
-  }
+  const targetMidi = FIRST_NOTE_MIDI[options.firstNoteMode];
+  const startMidi = targetMidi !== undefined
+    ? pool.reduce((closest, m) => (Math.abs(m - targetMidi) < Math.abs(closest - targetMidi) ? m : closest), pool[0])
+    : randomChoice(pool);
 
-  let index = pool.indexOf(startMidi);
-  if (index < 0) index = 0;
+  let index = Math.max(0, pool.indexOf(startMidi));
 
   const noteCount = Math.max(3, Math.min(6, level + 2));
   const steps = options.allowedIntervalSteps.length > 0 ? options.allowedIntervalSteps : DEFAULT_MELODY_OPTIONS.allowedIntervalSteps;
-  const notes: MelodyNoteRaw[] = [{ midi: pool[index], duration: randomNoteDuration(true) }];
+  const notes: { midi: number; duration: NoteType }[] = [{ midi: pool[index], duration: randomNoteDuration(true) }];
 
   for (let i = 1; i < noteCount; i += 1) {
     const step = randomChoice(steps);
@@ -182,8 +152,7 @@ function generateMelodyNotes(clef: Clef, level: number, options: MelodyOptions):
       next = index - step * direction;
     }
 
-    next = Math.max(0, Math.min(pool.length - 1, next));
-    index = next;
+    index = Math.max(0, Math.min(pool.length - 1, next));
     notes.push({ midi: pool[index], duration: randomNoteDuration(false) });
   }
 
@@ -258,8 +227,7 @@ export class ExerciseGenerator {
 
   private generateRhythm(level: number, clef: Clef): Exercise {
     const count = Math.max(2, Math.min(RHYTHM_PATTERNS.length, level + 1));
-    const pool = [...RHYTHM_PATTERNS.slice(0, count)];
-    const pattern: (typeof RHYTHM_PATTERNS)[number] = randomChoice(pool);
+    const pattern: (typeof RHYTHM_PATTERNS)[number] = randomChoice([...RHYTHM_PATTERNS.slice(0, count)]);
 
     return {
       id: createExerciseId('rhythm_id'),

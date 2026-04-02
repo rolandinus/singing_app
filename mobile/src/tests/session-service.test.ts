@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
-import { SessionService } from '../core/services/session-service';
-import { DEFAULT_SETTINGS } from '../core/config/curriculum';
+import { describe, expect, it, vi } from 'vitest';
+import { buildMelodyTimingModel, SessionService } from '../core/services/session-service';
+import { DEFAULT_SETTINGS, SKILL_DEFINITIONS } from '../core/config/curriculum';
 
-function createMockStorage() {
+function createMockStorage(options: {
+  initialSettings?: typeof DEFAULT_SETTINGS;
+  initialSessions?: any[];
+} = {}) {
   const progress: Record<string, any> = {};
-  const sessions: any[] = [];
-  let settings = { ...DEFAULT_SETTINGS };
+  const sessions: any[] = [...(options.initialSessions ?? [])];
+  let settings = { ...DEFAULT_SETTINGS, ...(options.initialSettings ?? {}) };
 
   return {
     async init() {},
@@ -334,5 +337,143 @@ describe('SessionService', () => {
 
     expect(captureCount).toBe(2);
     expect(outcome?.evaluation.correct).toBe(true);
+  });
+
+  it('builds dashboard skill rows for every enabled clef and skill, with persisted progress applied', async () => {
+    const storage = createMockStorage({
+      initialSettings: {
+        ...DEFAULT_SETTINGS,
+        enabledClefs: ['treble'],
+      },
+    });
+    await storage.saveProgress({
+      skillKey: 'treble.note_naming',
+      mastery: 0.6,
+      level: 3,
+      attemptsTotal: 9,
+      correctTotal: 7,
+      rollingWindow: [],
+      lastUpdatedAt: new Date().toISOString(),
+    });
+
+    const service = new SessionService(storage);
+    await service.init();
+
+    const rows = service.buildSkillRows();
+    expect(rows).toHaveLength(SKILL_DEFINITIONS.length);
+
+    const noteNaming = rows.find((row) => row.clef === 'treble' && row.skillKey === 'note_naming');
+    expect(noteNaming).toMatchObject({
+      clef: 'treble',
+      skillKey: 'note_naming',
+      mastery: 0.6,
+      level: 3,
+      attemptsTotal: 9,
+    });
+
+    const untouched = rows.find((row) => row.clef === 'treble' && row.skillKey === 'sing_melody');
+    expect(untouched).toMatchObject({
+      mastery: 0,
+      level: 1,
+      attemptsTotal: 0,
+    });
+  });
+
+  it('computes streakDays from consecutive prior session days when ending a session', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-04-02T10:00:00.000Z'));
+
+      const service = new SessionService(createMockStorage({
+        initialSessions: [
+          {
+            sessionId: 'older-1',
+            startedAt: '2026-04-01T08:00:00.000Z',
+            completedAt: '2026-04-01T08:05:00.000Z',
+            mode: 'guided',
+            exercises: [],
+            summary: { mode: 'guided', total: 0, correct: 0, accuracy: 0, practicedSkills: [] },
+          },
+          {
+            sessionId: 'older-2',
+            startedAt: '2026-03-31T08:00:00.000Z',
+            completedAt: '2026-03-31T08:05:00.000Z',
+            mode: 'guided',
+            exercises: [],
+            summary: { mode: 'guided', total: 0, correct: 0, accuracy: 0, practicedSkills: [] },
+          },
+          {
+            sessionId: 'gap-breaker',
+            startedAt: '2026-03-29T08:00:00.000Z',
+            completedAt: '2026-03-29T08:05:00.000Z',
+            mode: 'guided',
+            exercises: [],
+            summary: { mode: 'guided', total: 0, correct: 0, accuracy: 0, practicedSkills: [] },
+          },
+        ],
+      }));
+      await service.init();
+
+      service.startCustomSession({
+        skillKey: 'note_naming',
+        clef: 'treble',
+        level: 1,
+        count: 2,
+      });
+      await service.submitChoice('__wrong__');
+
+      const ended = await service.endSession();
+      expect(ended?.summary.streakDays).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('plays melody prompts with BPM-aware per-note durations on the fallback audio path', async () => {
+    vi.useFakeTimers();
+    try {
+      const played: Array<{ note: string; durationMs: number | undefined }> = [];
+      const service = new SessionService(
+        createMockStorage(),
+        {
+          async playNote(note, durationMs) {
+            played.push({ note, durationMs });
+          },
+          async playReferenceWithTarget() {},
+          async playInterval() {},
+          async playMelody() {},
+          async stop() {},
+        },
+        {
+          async capturePitchSample() { return null; },
+          async capturePitchContour() { return null; },
+          async stop() {},
+        },
+      );
+
+      const exercise = {
+        skillKey: 'sing_melody',
+        prompt: {
+          notes: [
+            { pitch: 'C4', duration: 'quarter' },
+            { pitch: 'D4', duration: 'half' },
+            { pitch: 'E4', duration: 'quarter' },
+          ],
+        },
+      } as any;
+
+      const playback = service.playMelodyExerciseWithTiming(exercise, 120);
+      await vi.runAllTimersAsync();
+      await playback;
+
+      const timing = buildMelodyTimingModel(120, 4);
+      expect(played).toEqual([
+        { note: 'C4', durationMs: timing.noteDurationMs - timing.gapMs },
+        { note: 'D4', durationMs: timing.noteDurationMs * 2 - timing.gapMs },
+        { note: 'E4', durationMs: timing.noteDurationMs - timing.gapMs },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

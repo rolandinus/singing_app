@@ -410,8 +410,7 @@ export type TranslationKey = keyof typeof TRANSLATIONS.de;
 type TranslationParams = Record<string, string | number>;
 
 export function t(locale: Locale, key: TranslationKey, params?: TranslationParams): string {
-  const dictionary = TRANSLATIONS[locale] ?? TRANSLATIONS.de;
-  const template = dictionary[key] ?? TRANSLATIONS.de[key] ?? key;
+  const template = TRANSLATIONS[locale][key];
 
   if (!params) {
     return template;

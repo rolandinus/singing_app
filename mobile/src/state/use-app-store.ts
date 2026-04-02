@@ -17,10 +17,6 @@ const pitchCapturePort = new ExpoPitchCapturePort();
 const service = new SessionService(new AsyncStoragePort(), new ExpoAudioPromptPort(), pitchCapturePort);
 const MAX_PITCH_DEBUG_EVENTS = 2500;
 
-function logStoreDebug(stage: string, details: Record<string, unknown> = {}) {
-  console.log(`[store:end-session] ${stage}`, details);
-}
-
 /**
  * Returns true when the pitch capture completed but detected no pitch samples at all.
  * This typically means the microphone is muted, the wrong input is selected,
@@ -54,19 +50,14 @@ const INITIAL_PITCH_DEBUG_STATE: PitchDebugState = {
   message: '',
 };
 
-function noteBeats(duration: NoteType): number {
-  return duration === 'half' ? 2 : 1;
-}
-
 function totalMelodyBeats(exercise: Exercise | null): number {
   if (!exercise || exercise.skillKey !== 'sing_melody') return 1;
   if (!Array.isArray(exercise.prompt.notes)) return 1;
   const beats = (exercise.prompt.notes as Array<unknown>).reduce<number>((sum, noteObj) => {
-    if (noteObj && typeof noteObj === 'object' && 'duration' in noteObj) {
-      const duration = (noteObj as { duration?: unknown }).duration;
-      if (duration === 'half') return sum + noteBeats('half');
-    }
-    return sum + noteBeats('quarter');
+    const duration = noteObj && typeof noteObj === 'object' && 'duration' in noteObj
+      ? (noteObj as { duration?: unknown }).duration
+      : undefined;
+    return sum + (duration === 'half' ? 2 : 1);
   }, 0);
   return Math.max(1, beats);
 }
@@ -221,10 +212,9 @@ export const useAppStore = create<StoreState>((set, get) => ({
 
   async bootstrap() {
     service.setPitchDebugListener((snapshot) => {
-      const typed = snapshot as PitchCaptureDebugSnapshot;
       set((state) => ({
-        pitchDebug: mergePitchDebugState(state.pitchDebug, typed),
-        pitchDebugEvents: [...state.pitchDebugEvents, typed].slice(-MAX_PITCH_DEBUG_EVENTS),
+        pitchDebug: mergePitchDebugState(state.pitchDebug, snapshot as PitchCaptureDebugSnapshot),
+        pitchDebugEvents: [...state.pitchDebugEvents, snapshot as PitchCaptureDebugSnapshot].slice(-MAX_PITCH_DEBUG_EVENTS),
       }));
     });
 
@@ -598,30 +588,11 @@ export const useAppStore = create<StoreState>((set, get) => ({
   },
 
   async endSession() {
-    if (get().loading.endSession) {
-      logStoreDebug('skipped_already_loading');
-      return;
-    }
-    const stateBefore = get();
-    logStoreDebug('requested', {
-      hasCurrentExercise: Boolean(stateBefore.currentExercise),
-      sessionMode: stateBefore.sessionMeta.mode,
-      sessionIndex: stateBefore.sessionMeta.index,
-      sessionTotal: stateBefore.sessionMeta.total,
-    });
+    if (get().loading.endSession) return;
     set((state) => ({ loading: { ...state.loading, endSession: true } }));
     try {
       const ended = await service.endSession();
-      if (!ended) {
-        logStoreDebug('service_returned_null');
-        return;
-      }
-
-      logStoreDebug('service_returned_summary', {
-        mode: ended.summary.mode,
-        total: ended.summary.total,
-        correct: ended.summary.correct,
-      });
+      if (!ended) return;
 
       set({
         summary: ended.summary,
@@ -630,18 +601,12 @@ export const useAppStore = create<StoreState>((set, get) => ({
         answerState: { selectedChoice: null, expectedChoice: null },
         singNoteAutoAdvancePending: false,
       });
-      logStoreDebug('state_updated_with_summary', {
-        hasSummary: Boolean(get().summary),
-      });
       get().refreshDashboard();
     } catch (error) {
       console.error('[store:end-session] failed', error);
       throw error;
     } finally {
       set((state) => ({ loading: { ...state.loading, endSession: false } }));
-      logStoreDebug('loading_reset', {
-        loading: get().loading.endSession,
-      });
     }
   },
 

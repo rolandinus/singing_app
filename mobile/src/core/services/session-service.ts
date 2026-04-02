@@ -153,7 +153,7 @@ function alignFrequenciesBySlot(
   let slotStartMs = 0;
   for (let noteIdx = 0; noteIdx < notes.length; noteIdx += 1) {
     const note = notes[noteIdx];
-    const slotDurationMs = noteBeats(note?.duration ?? 'quarter') * noteDurationMs;
+    const slotDurationMs = noteBeats(note.duration) * noteDurationMs;
     const slotEndMs = slotStartMs + slotDurationMs;
 
     const inSlot: number[] = [];
@@ -291,7 +291,7 @@ export class SessionService {
 
     const allProgress = await this.storage.getAllProgress();
     allProgress.forEach((record) => {
-      if (record?.skillKey) this.progressBySkill.set(record.skillKey, record);
+      if (record.skillKey) this.progressBySkill.set(record.skillKey, record);
     });
 
     this.recentSessions = await this.storage.getRecentSessions(20);
@@ -456,11 +456,7 @@ export class SessionService {
 
       for (let i = 0; i < maxWindows; i += 1) {
         const captured = await this.pitchCapturePort.capturePitchSample(windowDurationMs);
-        const evaluation = this.evaluator.evaluate(
-          exercise,
-          captured,
-          { toleranceCents },
-        );
+        const evaluation = this.evaluator.evaluate(exercise, captured, { toleranceCents });
         lastCaptured = captured;
         lastEvaluation = evaluation;
 
@@ -469,12 +465,7 @@ export class SessionService {
         }
       }
 
-      const fallbackEvaluation = lastEvaluation ?? this.evaluator.evaluate(
-        exercise,
-        null,
-        { toleranceCents },
-      );
-      return this.applyEvaluation(exercise, fallbackEvaluation, lastCaptured);
+      return this.applyEvaluation(exercise, lastEvaluation!, lastCaptured);
     }
 
     if (exercise.skillKey === 'sing_interval') {
@@ -556,14 +547,10 @@ export class SessionService {
     const beats = Math.max(1, totalMelodyBeats(melodyNoteObjects));
     const timing = buildMelodyTimingModel(bpm, beats);
 
-    // Build the per-note duration list for the audio port.
-    // Half notes play for 2x the quarter-note duration; quarter notes play for 1x.
-    const notesWithDurations = melodyNoteObjects
-      .filter((n): n is NonNullable<typeof n> => Boolean(n))
-      .map((noteObj) => ({
-        pitch: noteObj.pitch,
-        durationMs: noteBeats(noteObj.duration) * timing.noteDurationMs - timing.gapMs,
-      }));
+    const notesWithDurations = melodyNoteObjects.map((noteObj) => ({
+      pitch: noteObj.pitch,
+      durationMs: noteBeats(noteObj.duration) * timing.noteDurationMs - timing.gapMs,
+    }));
 
     // Use the cancellation-aware playMelodyWithDurations when available; fall back
     // to the simpler playNote loop for audio ports that don't support it (e.g. in tests).
@@ -573,7 +560,6 @@ export class SessionService {
       await this.audioPromptPort.stop();
       for (let i = 0; i < notesWithDurations.length; i += 1) {
         const noteObj = notesWithDurations[i];
-        if (!noteObj) continue;
         await this.audioPromptPort.playNote(noteObj.pitch, noteObj.durationMs);
         if (i < notesWithDurations.length - 1) {
           await new Promise<void>((resolve) => setTimeout(resolve, timing.gapMs));
@@ -619,7 +605,7 @@ export class SessionService {
       for (let i = 0; i < melodyNoteObjects.length; i += 1) {
         const delay = accumulatedBeats * timing.noteDurationMs;
         noteTimers.push(setTimeout(() => options.onNoteIndex?.(i), delay));
-        accumulatedBeats += noteBeats(melodyNoteObjects[i]?.duration ?? 'quarter');
+        accumulatedBeats += noteBeats(melodyNoteObjects[i].duration);
       }
     }
 
@@ -848,12 +834,13 @@ export class SessionService {
       .map((progressKey) => {
         const after = this.progressBySkill.get(progressKey) ?? createDefaultProgressRecord(progressKey);
         const before = activeSession.startProgressBySkill[progressKey] ?? { mastery: 0, level: 1 };
-        const [clefPart, skillPart] = progressKey.split('.');
-        if (!clefPart || !skillPart) return null;
+        const dotIdx = progressKey.indexOf('.');
+        const clefPart = progressKey.slice(0, dotIdx) as Clef;
+        const skillPart = progressKey.slice(dotIdx + 1) as SkillKey;
 
         return {
-          clef: clefPart as Clef,
-          skillKey: skillPart as SkillKey,
+          clef: clefPart,
+          skillKey: skillPart,
           masteryBefore: before.mastery,
           masteryAfter: after.mastery,
           masteryDelta: after.mastery - before.mastery,
@@ -861,7 +848,6 @@ export class SessionService {
           levelAfter: after.level,
         };
       })
-      .filter((row): row is NonNullable<SessionSummary['practicedSkills']>[number] => Boolean(row))
       .sort((a, b) => Math.abs(b.masteryDelta) - Math.abs(a.masteryDelta));
   }
 }
