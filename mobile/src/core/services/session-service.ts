@@ -93,11 +93,6 @@ export type MelodyCaptureAttemptOutcome = {
     detectedMidisBySegment?: Array<number | null>;
     detectedFrequenciesBySegment?: Array<number | null>;
     detectedMidisBySlot?: Array<number | null>;
-    experimentalDetectedMidis?: number[];
-    experimentalDetectedFrequencies?: number[];
-    experimentalDetectedMidisBySegment?: Array<number | null>;
-    experimentalDetectedFrequenciesBySegment?: Array<number | null>;
-    experimentalDetectedMidisBySlot?: Array<number | null>;
   } | null;
   noteResults: MelodyNoteResult[];
 };
@@ -229,9 +224,6 @@ export class SessionService {
       detectedFrequency: number;
       detectedMidi: number;
       noteName: string | null;
-      experimentalDetectedFrequency?: number | null;
-      experimentalDetectedMidi?: number | null;
-      experimentalNoteName?: string | null;
     } | null>;
     capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{
       detectedMidis: number[];
@@ -239,10 +231,6 @@ export class SessionService {
       segmentDurationMs?: number;
       detectedMidisBySegment?: Array<number | null>;
       detectedFrequenciesBySegment?: Array<number | null>;
-      experimentalDetectedMidis?: number[];
-      experimentalDetectedFrequencies?: number[];
-      experimentalDetectedMidisBySegment?: Array<number | null>;
-      experimentalDetectedFrequenciesBySegment?: Array<number | null>;
     } | null>;
     setDebugListener?: (listener: ((snapshot: unknown) => void) | null) => void;
     stop: () => Promise<void>;
@@ -270,9 +258,6 @@ export class SessionService {
       detectedFrequency: number;
       detectedMidi: number;
       noteName: string | null;
-      experimentalDetectedFrequency?: number | null;
-      experimentalDetectedMidi?: number | null;
-      experimentalNoteName?: string | null;
     } | null>;
     capturePitchContour: (durationMs: number, segmentMs: number) => Promise<{
       detectedMidis: number[];
@@ -280,10 +265,6 @@ export class SessionService {
       segmentDurationMs?: number;
       detectedMidisBySegment?: Array<number | null>;
       detectedFrequenciesBySegment?: Array<number | null>;
-      experimentalDetectedMidis?: number[];
-      experimentalDetectedFrequencies?: number[];
-      experimentalDetectedMidisBySegment?: Array<number | null>;
-      experimentalDetectedFrequenciesBySegment?: Array<number | null>;
     } | null>;
     setDebugListener?: (listener: ((snapshot: unknown) => void) | null) => void;
     stop: () => Promise<void>;
@@ -648,10 +629,6 @@ export class SessionService {
       segmentDurationMs?: number;
       detectedMidisBySegment?: Array<number | null>;
       detectedFrequenciesBySegment?: Array<number | null>;
-      experimentalDetectedMidis?: number[];
-      experimentalDetectedFrequencies?: number[];
-      experimentalDetectedMidisBySegment?: Array<number | null>;
-      experimentalDetectedFrequenciesBySegment?: Array<number | null>;
     } | null = null;
     try {
       contour = await this.pitchCapturePort.capturePitchContour(timing.captureDurationMs, timing.segmentMs);
@@ -665,12 +642,6 @@ export class SessionService {
       melodyNoteObjects,
       timing.noteDurationMs,
     )?.map((frequency) => (frequency == null ? null : noteFromPitch(frequency))) ?? null;
-    const experimentalDetectedMidisBySlot = alignFrequenciesBySlot(
-      contour?.experimentalDetectedFrequenciesBySegment,
-      contour?.segmentDurationMs,
-      melodyNoteObjects,
-      timing.noteDurationMs,
-    )?.map((frequency) => (frequency == null ? null : noteFromPitch(frequency))) ?? null;
 
     const evaluation = this.evaluator.evaluate(
       exercise,
@@ -678,7 +649,6 @@ export class SessionService {
         ? {
           ...contour,
           detectedMidisBySlot,
-          experimentalDetectedMidisBySlot,
         }
         : { detectedMidis: [] },
       { toleranceCents },
@@ -697,7 +667,6 @@ export class SessionService {
         ? {
           ...contour,
           detectedMidisBySlot: detectedMidisBySlot ?? undefined,
-          experimentalDetectedMidisBySlot: experimentalDetectedMidisBySlot ?? undefined,
         }
         : null,
       noteResults,

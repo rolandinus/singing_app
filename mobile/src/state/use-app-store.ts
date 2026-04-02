@@ -146,6 +146,8 @@ type StoreState = {
   captureSingingAttempt: () => Promise<void>;
   /** Stop active prompt playback. */
   stopPlayback: () => Promise<void>;
+  /** Stop active pitch capture (no-op if not capturing). */
+  stopCapture: () => Promise<void>;
   /** Regenerate the current melody exercise with a new melody. */
   regenerateMelody: () => void;
   /** Audition a single note by name (tap on staff). */
@@ -362,6 +364,11 @@ export const useAppStore = create<StoreState>((set, get) => ({
     } finally {
       set((state) => ({ loading: { ...state.loading, stopPlayback: false, playPrompt: false } }));
     }
+  },
+
+  async stopCapture() {
+    await service.stopCapture();
+    set((state) => ({ loading: { ...state.loading, captureSingingAttempt: false } }));
   },
 
   regenerateMelody() {

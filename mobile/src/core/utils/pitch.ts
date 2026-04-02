@@ -1,4 +1,34 @@
-export function autoCorrelate(buffer: Float32Array, sampleRate: number): number {
+export type AutoCorrelatePeak = {
+  lag: number;
+  frequency: number;
+  correlation: number;
+};
+
+export type AutoCorrelateDiagnostics = {
+  rms: number;
+  trimmedSize: number;
+  searchStartLag: number;
+  bestLag: number;
+  bestCorrelation: number;
+  subharmonicLag: number | null;
+  subharmonicFrequency: number | null;
+  subharmonicCorrelation: number | null;
+  subharmonicRatio: number | null;
+  selectedLag: number | null;
+  selectedFrequency: number | null;
+  topPeaks: AutoCorrelatePeak[];
+  reason: 'ok' | 'silent_input' | 'empty_trimmed_buffer' | 'descending_autocorrelation' | 'invalid_peak';
+};
+
+export type AutoCorrelateResult = {
+  frequency: number;
+  diagnostics: AutoCorrelateDiagnostics;
+};
+
+function autoCorrelateInternal(
+  buffer: Float32Array,
+  sampleRate: number,
+): AutoCorrelateResult {
   let size = buffer.length;
   let sumOfSquares = 0;
 
@@ -9,7 +39,24 @@ export function autoCorrelate(buffer: Float32Array, sampleRate: number): number 
 
   const rootMeanSquare = Math.sqrt(sumOfSquares / size);
   if (rootMeanSquare < 0.01) {
-    return -1;
+    return {
+      frequency: -1,
+      diagnostics: {
+        rms: rootMeanSquare,
+        trimmedSize: 0,
+        searchStartLag: 0,
+        bestLag: -1,
+        bestCorrelation: -1,
+        subharmonicLag: null,
+        subharmonicFrequency: null,
+        subharmonicCorrelation: null,
+        subharmonicRatio: null,
+        selectedLag: null,
+        selectedFrequency: null,
+        topPeaks: [],
+        reason: 'silent_input',
+      },
+    };
   }
 
   let r1 = 0;
@@ -33,7 +80,24 @@ export function autoCorrelate(buffer: Float32Array, sampleRate: number): number 
   const sliced = buffer.slice(r1, r2);
   size = sliced.length;
   if (size === 0) {
-    return -1;
+    return {
+      frequency: -1,
+      diagnostics: {
+        rms: rootMeanSquare,
+        trimmedSize: 0,
+        searchStartLag: 0,
+        bestLag: -1,
+        bestCorrelation: -1,
+        subharmonicLag: null,
+        subharmonicFrequency: null,
+        subharmonicCorrelation: null,
+        subharmonicRatio: null,
+        selectedLag: null,
+        selectedFrequency: null,
+        topPeaks: [],
+        reason: 'empty_trimmed_buffer',
+      },
+    };
   }
 
   const correlation = new Array(size).fill(0);
@@ -49,7 +113,24 @@ export function autoCorrelate(buffer: Float32Array, sampleRate: number): number 
   }
 
   if (d === correlation.length - 1 && correlation.length > 1) {
-    return -1;
+    return {
+      frequency: -1,
+      diagnostics: {
+        rms: rootMeanSquare,
+        trimmedSize: size,
+        searchStartLag: d,
+        bestLag: -1,
+        bestCorrelation: -1,
+        subharmonicLag: null,
+        subharmonicFrequency: null,
+        subharmonicCorrelation: null,
+        subharmonicRatio: null,
+        selectedLag: null,
+        selectedFrequency: null,
+        topPeaks: [],
+        reason: 'descending_autocorrelation',
+      },
+    };
   }
 
   let maxValue = -1;
@@ -63,7 +144,24 @@ export function autoCorrelate(buffer: Float32Array, sampleRate: number): number 
 
   let t0 = maxIndex;
   if (t0 <= 0 || t0 + 1 >= correlation.length) {
-    return -1;
+    return {
+      frequency: -1,
+      diagnostics: {
+        rms: rootMeanSquare,
+        trimmedSize: size,
+        searchStartLag: d,
+        bestLag: maxIndex,
+        bestCorrelation: maxValue,
+        subharmonicLag: null,
+        subharmonicFrequency: null,
+        subharmonicCorrelation: null,
+        subharmonicRatio: null,
+        selectedLag: null,
+        selectedFrequency: null,
+        topPeaks: [],
+        reason: 'invalid_peak',
+      },
+    };
   }
 
   const x1 = correlation[t0 - 1];
@@ -76,7 +174,53 @@ export function autoCorrelate(buffer: Float32Array, sampleRate: number): number 
     t0 -= b / (2 * a);
   }
 
-  return sampleRate / t0;
+  const localMaxima: AutoCorrelatePeak[] = [];
+  for (let i = Math.max(1, d); i < correlation.length - 1; i += 1) {
+    if (correlation[i] > correlation[i - 1] && correlation[i] >= correlation[i + 1]) {
+      localMaxima.push({
+        lag: i,
+        frequency: sampleRate / i,
+        correlation: correlation[i],
+      });
+    }
+  }
+  const topPeaks = localMaxima.sort((aPeak, bPeak) => bPeak.correlation - aPeak.correlation).slice(0, 6);
+
+  const subharmonicLag = Math.round(t0 * 2);
+  const subharmonicCorrelation = subharmonicLag >= 0 && subharmonicLag < correlation.length
+    ? correlation[subharmonicLag]
+    : null;
+  const subharmonicFrequency = subharmonicCorrelation == null ? null : sampleRate / subharmonicLag;
+  const subharmonicRatio = subharmonicCorrelation != null && x2 > 0
+    ? subharmonicCorrelation / x2
+    : null;
+
+  return {
+    frequency: sampleRate / t0,
+    diagnostics: {
+      rms: rootMeanSquare,
+      trimmedSize: size,
+      searchStartLag: d,
+      bestLag: maxIndex,
+      bestCorrelation: maxValue,
+      subharmonicLag: subharmonicCorrelation == null ? null : subharmonicLag,
+      subharmonicFrequency,
+      subharmonicCorrelation,
+      subharmonicRatio,
+      selectedLag: t0,
+      selectedFrequency: sampleRate / t0,
+      topPeaks,
+      reason: 'ok',
+    },
+  };
+}
+
+export function autoCorrelate(buffer: Float32Array, sampleRate: number): number {
+  return autoCorrelateInternal(buffer, sampleRate).frequency;
+}
+
+export function autoCorrelateWithDiagnostics(buffer: Float32Array, sampleRate: number): AutoCorrelateResult {
+  return autoCorrelateInternal(buffer, sampleRate);
 }
 
 export function noteFromPitch(frequency: number): number {

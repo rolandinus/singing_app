@@ -5,7 +5,7 @@ import {
 } from 'expo-audio';
 import { Platform } from 'react-native';
 import { midiToScientific } from '../../core/utils/note-helpers';
-import { autoCorrelate, noteFromPitch } from '../../core/utils/pitch';
+import { autoCorrelateWithDiagnostics, noteFromPitch, type AutoCorrelatePeak } from '../../core/utils/pitch';
 
 // @siteed/expo-audio-studio is used for real-time PCM streaming on native (iOS/Android).
 // It is not imported on web — the AnalyserNode path is used there instead.
@@ -16,7 +16,6 @@ import { autoCorrelate, noteFromPitch } from '../../core/utils/pitch';
 // startRecording and sets up event listeners separately. We replicate that pattern here.
 let studioStartRecording: ((options: StudioRecordingOptions) => Promise<StudioStartRecordingResult>) | null = null;
 let studioStopRecording: (() => Promise<StudioRecordingResult | null>) | null = null;
-let studioConvertPCMToFloat32: ((data: string, bitDepth: number) => Float32Array) | null = null;
 let studioExtractAudioAnalysis: ((options: StudioExtractAudioAnalysisOptions) => Promise<StudioAudioAnalysis>) | null = null;
 let studioAddAudioDataListener: ((cb: (event: StudioAudioDataEvent) => void) => { remove: () => void }) | null = null;
 let studioAddAudioAnalysisListener: ((cb: (event: StudioAudioAnalysisEvent) => void) => { remove: () => void }) | null = null;
@@ -49,11 +48,11 @@ if (Platform.OS !== 'web') {
       const emitter = new LegacyEventEmitter(nativeModule as object);
       studioAddAudioDataListener = (cb) => emitter.addListener<StudioAudioDataEvent>('AudioData', cb);
       studioAddAudioAnalysisListener = (cb) => emitter.addListener<StudioAudioAnalysisEvent>('AudioAnalysis', cb);
-    } catch {
+    } catch (error) {
+      console.log('[pitch:init] expo-modules-core LegacyEventEmitter unavailable', error);
       // expo-modules-core not available — fallback listeners stay null
     }
   }
-  studioConvertPCMToFloat32 = studio.convertPCMToFloat32;
   studioExtractAudioAnalysis = studio.extractAudioAnalysis
     ?? (nativeModule?.extractAudioAnalysis as typeof studioExtractAudioAnalysis)
     ?? null;
@@ -75,6 +74,7 @@ interface StudioAudioDataEvent {
   encoded?: string;
   buffer?: Float32Array;
   deltaSize?: number;
+  position?: number;
   [key: string]: unknown;
 }
 
@@ -90,6 +90,7 @@ interface StudioAudioDataPoint {
 }
 interface StudioAudioAnalysisEvent {
   segmentDurationMs?: number;
+  durationMs?: number;
   dataPoints?: StudioAudioDataPoint[];
   points?: StudioAudioDataPoint[];
   [key: string]: unknown;
@@ -164,7 +165,7 @@ function normalizeStudioTimeMs(timeValue: number | undefined, fallbackTimeMs: nu
 }
 
 type PitchTimelinePoint = { timeMs: number; frequency: number };
-type DetectorSource = 'autocorrelation' | 'studio_pitch';
+type DetectorSource = 'studio_pitch';
 
 export type PitchCaptureDebugSnapshot = {
   phase: 'idle' | 'request_permission' | 'recording' | 'recorded' | 'analyzing' | 'analysis_sample' | 'analysis_complete' | 'error';
@@ -181,10 +182,28 @@ export type PitchCaptureDebugSnapshot = {
 };
 type PitchCaptureDebugListener = ((snapshot: PitchCaptureDebugSnapshot) => void) | null;
 
+function summarizeTopPeaks(peaks: AutoCorrelatePeak[]): Array<{ hz: number; lag: number; corr: number }> {
+  return peaks.slice(0, 4).map((peak) => ({
+    hz: Math.round(peak.frequency * 10) / 10,
+    lag: peak.lag,
+    corr: Math.round(peak.correlation * 1000) / 1000,
+  }));
+}
+
+function shouldLogAutoCorrelationDiagnostic(sampleNr: number, frequency: number, subharmonicRatio: number | null): boolean {
+  if (sampleNr <= 3) return true;
+  if (sampleNr % 12 === 0) return true;
+  if (Number.isFinite(frequency) && frequency >= 450 && frequency <= 580) return true;
+  if (subharmonicRatio != null && subharmonicRatio >= 0.82) return true;
+  return false;
+}
+
 export class ExpoPitchCapturePort {
   /** True while a native streaming session is active. */
   private nativeStreaming = false;
   private debugListener: PitchCaptureDebugListener = null;
+  private autoCorrelationSampleCounter = 0;
+  private studioPitchSampleCounter = 0;
 
   setDebugListener(listener: PitchCaptureDebugListener): void {
     this.debugListener = listener;
@@ -202,7 +221,9 @@ export class ExpoPitchCapturePort {
         ...snapshot,
         timestampMs: Date.now(),
       });
-    } catch {}
+    } catch (error) {
+      console.log('[pitch:debug] emitDebug listener failed', error);
+    }
   }
 
   private async ensurePermissions() {
@@ -230,7 +251,8 @@ export class ExpoPitchCapturePort {
         for (const track of stream.getTracks()) {
           track.stop();
         }
-      } catch {
+      } catch (error) {
+        console.log('[pitch:permission] getUserMedia failed', error);
         this.emitDebug({ phase: 'error', message: 'microphone_permission_denied' });
         throw new Error('Mikrofonberechtigung wurde nicht erteilt.');
       }
@@ -271,10 +293,9 @@ export class ExpoPitchCapturePort {
     durationMs: number,
     comparisonSegmentMs = 100,
   ): Promise<{
-    timeline: PitchTimelinePoint[];
     studioPitchTimeline: PitchTimelinePoint[];
   }> {
-    if (!studioStartRecording || !studioStopRecording || !studioConvertPCMToFloat32) {
+    if (!studioStartRecording || !studioStopRecording) {
       throw new Error('Native audio studio module is not available.');
     }
 
@@ -282,67 +303,101 @@ export class ExpoPitchCapturePort {
     await this.ensurePermissions();
     await this.configureAudioModeForRecording();
 
-    const timeline: PitchTimelinePoint[] = [];
     const studioPitchRealtimeTimeline: PitchTimelinePoint[] = [];
     let startedAt: number | null = null;
-    const convertPCM = studioConvertPCMToFloat32;
     let startRecordingResult: StudioStartRecordingResult | null = null;
+    let lastNativeChunkStartMs: number | null = null;
+    let lastNativeChunkDurationMs: number | null = null;
+    this.studioPitchSampleCounter = 0;
 
     this.nativeStreaming = true;
 
     // Set up event listeners BEFORE starting recording so no events are missed.
     const audioDataSub = studioAddAudioDataListener?.((event: StudioAudioDataEvent) => {
       if (!this.nativeStreaming || startedAt == null) return;
-      const elapsed = Date.now() - startedAt;
-      if (elapsed >= durationMs) return;
+      const callbackElapsed = Date.now() - startedAt;
 
-      // Native delivers PCM as base64 string in `encoded`; web delivers Float32Array in `buffer`.
-      const raw = event.encoded ?? event.buffer;
-      if (!raw) return;
-      if ((event.deltaSize ?? 1) === 0) return;
+      const nativeChunkStartMs = Number.isFinite(event.position)
+        ? Math.max(0, Number(event.position))
+        : callbackElapsed;
 
-      let pcm: Float32Array;
-      if (typeof raw === 'string') {
-        try {
-          pcm = convertPCM(raw, 16);
-        } catch {
-          return;
-        }
-      } else {
-        pcm = raw;
+      const deltaBytes = Number.isFinite(event.deltaSize) ? Math.max(0, Number(event.deltaSize)) : 0;
+      const chunkDurationMs = deltaBytes > 0
+        ? (deltaBytes / (44100 * 2)) * 1000
+        : 0;
+      const sampleTimeMs = Math.round(nativeChunkStartMs + (chunkDurationMs / 2));
+      lastNativeChunkStartMs = nativeChunkStartMs;
+      lastNativeChunkDurationMs = chunkDurationMs;
+
+      if (sampleTimeMs >= durationMs) {
+        console.log('[pitch:auto:timing] dropping_late_chunk', {
+          callbackElapsedMs: callbackElapsed,
+          nativeChunkStartMs,
+          chunkDurationMs: Math.round(chunkDurationMs),
+          sampleTimeMs,
+          captureDurationMs: durationMs,
+        });
       }
-
-      if (pcm.length < 256) return;
-
-      const freq = autoCorrelate(pcm, 44100);
-      if (!Number.isFinite(freq) || freq < 60 || freq > 1200) return;
-
-      timeline.push({ timeMs: elapsed, frequency: freq });
-      this.emitDebug({
-        phase: 'analysis_sample',
-        detector: 'autocorrelation',
-        frequency: freq,
-        sampleTimeMs: elapsed,
-        timelinePoints: timeline.length,
-      });
     });
 
     const audioAnalysisSub = studioAddAudioAnalysisListener?.((event: StudioAudioAnalysisEvent) => {
       if (!this.nativeStreaming || startedAt == null) return;
-      const elapsed = Date.now() - startedAt;
-      if (elapsed >= durationMs) return;
+      const callbackElapsed = Date.now() - startedAt;
 
       const eventSegmentMs = Math.max(1, Number(event.segmentDurationMs ?? comparisonSegmentMs));
+      const analysisDurationMs = Math.max(
+        eventSegmentMs,
+        Number.isFinite(event.durationMs)
+          ? Number(event.durationMs)
+          : eventSegmentMs * Math.max(1, readStudioDataPoints(event).length),
+      );
+      const latestChunkEndMs = lastNativeChunkStartMs != null
+        ? lastNativeChunkStartMs + (lastNativeChunkDurationMs ?? 0)
+        : callbackElapsed;
+      const analysisChunkStartMs = Math.max(0, latestChunkEndMs - analysisDurationMs);
       const points = readStudioDataPoints(event);
       points.forEach((point, index) => {
         const frequency = readStudioPitchHz(point);
         if (frequency == null || frequency < 50 || frequency > 1200) return;
+        this.studioPitchSampleCounter += 1;
 
-        const fallbackTimeMs = elapsed + (index * eventSegmentMs);
-        const rawPointTime = typeof point.startTime === 'number'
-          ? point.startTime
-          : undefined;
-        const pointTimeMs = normalizeStudioTimeMs(rawPointTime, fallbackTimeMs);
+        const fallbackRelativeMs = index * eventSegmentMs;
+        const relativeStartMs = typeof point.startTime === 'number'
+          ? normalizeStudioTimeMs(point.startTime, fallbackRelativeMs)
+          : typeof point.endTime === 'number'
+            ? Math.max(0, normalizeStudioTimeMs(point.endTime, fallbackRelativeMs + eventSegmentMs) - eventSegmentMs)
+            : fallbackRelativeMs;
+        const pointTimeMs = Math.round(analysisChunkStartMs + relativeStartMs);
+        if (pointTimeMs >= durationMs) {
+          console.log('[pitch:studio:timing] dropping_late_analysis_point', {
+            callbackElapsedMs: callbackElapsed,
+            analysisChunkStartMs: Math.round(analysisChunkStartMs),
+            analysisDurationMs: Math.round(analysisDurationMs),
+            relativeStartMs: Math.round(relativeStartMs),
+            pointTimeMs,
+            captureDurationMs: durationMs,
+          });
+          return;
+        }
+
+        if (
+          this.studioPitchSampleCounter <= 3
+          || this.studioPitchSampleCounter % 12 === 0
+          || (frequency >= 450 && frequency <= 580)
+        ) {
+          console.log('[pitch:studio:diag]', {
+            source: 'native_realtime',
+            sampleNr: this.studioPitchSampleCounter,
+            callbackElapsedMs: Math.round(callbackElapsed),
+            analysisChunkStartMs: Math.round(analysisChunkStartMs),
+            analysisDurationMs: Math.round(analysisDurationMs),
+            elapsedMs: Math.round(pointTimeMs),
+            frequency: Math.round(frequency * 10) / 10,
+            startTime: point.startTime ?? null,
+            endTime: point.endTime ?? null,
+            segmentDurationMs: eventSegmentMs,
+          });
+        }
 
         studioPitchRealtimeTimeline.push({ timeMs: pointTimeMs, frequency });
         this.emitDebug({
@@ -414,7 +469,9 @@ export class ExpoPitchCapturePort {
     let stopRecordingResult: StudioRecordingResult | null = null;
     try {
       stopRecordingResult = await studioStopRecording();
-    } catch {}
+    } catch (error) {
+      console.log('[pitch:stop] failed to stop recording cleanly', error);
+    }
 
     const recording: StudioRecordingResult | null = stopRecordingResult
       ? {
@@ -451,13 +508,13 @@ export class ExpoPitchCapturePort {
 
     this.emitDebug({
       phase: 'analysis_complete',
-      timelinePoints: timeline.length,
-      message: timeline.length > 0 || studioPitchTimeline.length > 0
+      timelinePoints: studioPitchTimeline.length,
+      message: studioPitchTimeline.length > 0
         ? 'analysis_finished'
         : 'analysis_finished_without_pitch',
     });
 
-    return { timeline, studioPitchTimeline };
+    return { studioPitchTimeline };
   }
 
   private async extractStudioPitchTimeline(
@@ -503,7 +560,14 @@ export class ExpoPitchCapturePort {
       });
 
       const resolvedSegmentMs = Math.max(1, Number(analysis.segmentDurationMs ?? segmentDurationMs));
-      const points = readStudioDataPoints(analysis)
+      const rawPoints = readStudioDataPoints(analysis);
+      console.log('[studio_pitch:diag] dataPoints count:', rawPoints.length, 'segmentDurationMs:', analysis.segmentDurationMs);
+      if (rawPoints.length > 0) {
+        const sample = rawPoints.slice(0, 5);
+        console.log('[studio_pitch:diag] first points (features.pitch):', sample.map((p) => p.features?.pitch ?? '(no features.pitch)'));
+        console.log('[studio_pitch:diag] first point keys:', Object.keys(sample[0] ?? {}));
+      }
+      const points = rawPoints
         .map((point, index) => {
           const frequency = readStudioPitchHz(point);
           if (frequency == null || frequency < 50 || frequency > 1200) return null;
@@ -521,6 +585,23 @@ export class ExpoPitchCapturePort {
           };
         })
         .filter((point): point is PitchTimelinePoint => Boolean(point));
+
+      const around500Count = points.filter((point) => point.frequency >= 450 && point.frequency <= 580).length;
+      const bucketCounts = new Map<number, number>();
+      points.forEach((point) => {
+        const bucket = Math.round(point.frequency / 25) * 25;
+        bucketCounts.set(bucket, (bucketCounts.get(bucket) ?? 0) + 1);
+      });
+      const topBuckets = Array.from(bucketCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([hz, count]) => ({ hz, count }));
+      console.log('[studio_pitch:diag] summary', {
+        points: points.length,
+        around500Count,
+        around500Ratio: points.length > 0 ? Math.round((around500Count / points.length) * 1000) / 1000 : 0,
+        topBuckets,
+      });
 
       this.emitDebug({
         phase: 'analyzing',
@@ -572,6 +653,7 @@ export class ExpoPitchCapturePort {
     const frequencies: number[] = [];
     const pollMs = 60;
     const startedAt = Date.now();
+    this.autoCorrelationSampleCounter = 0;
 
     this.emitDebug({ phase: 'recording', isRecording: true, message: 'recording_started' });
 
@@ -584,7 +666,28 @@ export class ExpoPitchCapturePort {
         }
 
         analyser.getFloatTimeDomainData(buffer);
-        const freq = autoCorrelate(buffer, audioCtx.sampleRate);
+        this.autoCorrelationSampleCounter += 1;
+        const auto = autoCorrelateWithDiagnostics(buffer, audioCtx.sampleRate);
+        const freq = auto.frequency;
+        if (shouldLogAutoCorrelationDiagnostic(this.autoCorrelationSampleCounter, freq, auto.diagnostics.subharmonicRatio)) {
+          console.log('[pitch:auto:diag]', {
+            source: 'web_sample',
+            sampleNr: this.autoCorrelationSampleCounter,
+            elapsedMs: elapsed,
+            frequency: Number.isFinite(freq) ? Math.round(freq * 10) / 10 : null,
+            rms: Math.round(auto.diagnostics.rms * 10000) / 10000,
+            reason: auto.diagnostics.reason,
+            selectedLag: auto.diagnostics.selectedLag,
+            bestLag: auto.diagnostics.bestLag,
+            subharmonicHz: auto.diagnostics.subharmonicFrequency == null
+              ? null
+              : Math.round(auto.diagnostics.subharmonicFrequency * 10) / 10,
+            subharmonicRatio: auto.diagnostics.subharmonicRatio == null
+              ? null
+              : Math.round(auto.diagnostics.subharmonicRatio * 1000) / 1000,
+            peaks: summarizeTopPeaks(auto.diagnostics.topPeaks),
+          });
+        }
         if (Number.isFinite(freq) && freq >= 60 && freq <= 1200) {
           frequencies.push(freq);
           this.emitDebug({ phase: 'analysis_sample', frequency: freq, sampleTimeMs: elapsed, timelinePoints: frequencies.length });
@@ -617,10 +720,6 @@ export class ExpoPitchCapturePort {
     segmentDurationMs?: number;
     detectedMidisBySegment?: Array<number | null>;
     detectedFrequenciesBySegment?: Array<number | null>;
-    experimentalDetectedMidis?: number[];
-    experimentalDetectedFrequencies?: number[];
-    experimentalDetectedMidisBySegment?: Array<number | null>;
-    experimentalDetectedFrequenciesBySegment?: Array<number | null>;
   } | null> {
     this.emitDebug({ phase: 'request_permission', message: 'checking_permissions' });
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -640,6 +739,7 @@ export class ExpoPitchCapturePort {
     const timeline: PitchTimelinePoint[] = [];
     const pollMs = 60;
     const startedAt = Date.now();
+    this.autoCorrelationSampleCounter = 0;
 
     this.emitDebug({ phase: 'recording', isRecording: true, message: 'recording_started' });
 
@@ -652,7 +752,28 @@ export class ExpoPitchCapturePort {
         }
 
         analyser.getFloatTimeDomainData(buffer);
-        const freq = autoCorrelate(buffer, audioCtx.sampleRate);
+        this.autoCorrelationSampleCounter += 1;
+        const auto = autoCorrelateWithDiagnostics(buffer, audioCtx.sampleRate);
+        const freq = auto.frequency;
+        if (shouldLogAutoCorrelationDiagnostic(this.autoCorrelationSampleCounter, freq, auto.diagnostics.subharmonicRatio)) {
+          console.log('[pitch:auto:diag]', {
+            source: 'web_contour',
+            sampleNr: this.autoCorrelationSampleCounter,
+            elapsedMs: elapsed,
+            frequency: Number.isFinite(freq) ? Math.round(freq * 10) / 10 : null,
+            rms: Math.round(auto.diagnostics.rms * 10000) / 10000,
+            reason: auto.diagnostics.reason,
+            selectedLag: auto.diagnostics.selectedLag,
+            bestLag: auto.diagnostics.bestLag,
+            subharmonicHz: auto.diagnostics.subharmonicFrequency == null
+              ? null
+              : Math.round(auto.diagnostics.subharmonicFrequency * 10) / 10,
+            subharmonicRatio: auto.diagnostics.subharmonicRatio == null
+              ? null
+              : Math.round(auto.diagnostics.subharmonicRatio * 1000) / 1000,
+            peaks: summarizeTopPeaks(auto.diagnostics.topPeaks),
+          });
+        }
         if (Number.isFinite(freq) && freq >= 60 && freq <= 1200) {
           timeline.push({ timeMs: elapsed, frequency: freq });
           this.emitDebug({ phase: 'analysis_sample', frequency: freq, sampleTimeMs: elapsed, timelinePoints: timeline.length });
@@ -714,18 +835,14 @@ export class ExpoPitchCapturePort {
     detectedFrequency: number;
     detectedMidi: number;
     noteName: string | null;
-    experimentalDetectedFrequency?: number | null;
-    experimentalDetectedMidi?: number | null;
-    experimentalNoteName?: string | null;
   } | null> {
     if (Platform.OS === 'web' ) {
       return this.capturePitchSampleWeb(Math.max(500, durationMs));
     }
 
     const captureMs = Math.max(500, durationMs);
-    const { timeline, studioPitchTimeline } = await this.streamPitchNative(captureMs, 100);
-    const frequencies = timeline.map((point) => point.frequency);
-    const studioFrequencies = studioPitchTimeline.map((point) => point.frequency);
+    const { studioPitchTimeline } = await this.streamPitchNative(captureMs, 100);
+    const frequencies = studioPitchTimeline.map((point) => point.frequency);
 
     if (frequencies.length === 0) return null;
 
@@ -733,17 +850,10 @@ export class ExpoPitchCapturePort {
     const detectedMidi = noteFromPitch(detectedFrequency);
     const noteName = midiToScientific(detectedMidi);
 
-    const experimentalDetectedFrequency = studioFrequencies.length > 0 ? median(studioFrequencies) : null;
-    const experimentalDetectedMidi = experimentalDetectedFrequency != null ? noteFromPitch(experimentalDetectedFrequency) : null;
-    const experimentalNoteName = experimentalDetectedMidi != null ? midiToScientific(experimentalDetectedMidi) : null;
-
     return {
       detectedFrequency,
       detectedMidi,
       noteName,
-      experimentalDetectedFrequency,
-      experimentalDetectedMidi,
-      experimentalNoteName,
     };
   }
 
@@ -753,19 +863,15 @@ export class ExpoPitchCapturePort {
     segmentDurationMs?: number;
     detectedMidisBySegment?: Array<number | null>;
     detectedFrequenciesBySegment?: Array<number | null>;
-    experimentalDetectedMidis?: number[];
-    experimentalDetectedFrequencies?: number[];
-    experimentalDetectedMidisBySegment?: Array<number | null>;
-    experimentalDetectedFrequenciesBySegment?: Array<number | null>;
   } | null> {
     if (Platform.OS === 'web') {
       return this.capturePitchContourWeb(Math.max(1000, durationMs), segmentMs);
     }
 
     const captureMs = Math.max(1000, durationMs);
-    const { timeline, studioPitchTimeline } = await this.streamPitchNative(captureMs, segmentMs);
+    const { studioPitchTimeline } = await this.streamPitchNative(captureMs, segmentMs);
 
-    if (timeline.length === 0) return null;
+    if (studioPitchTimeline.length === 0) return null;
 
     const safeSegmentMs = Math.max(250, segmentMs);
     const totalDurationMs = Math.max(safeSegmentMs, captureMs);
@@ -776,7 +882,7 @@ export class ExpoPitchCapturePort {
     for (let segment = 0; segment < segmentCount; segment += 1) {
       const start = segment * safeSegmentMs;
       const end = start + safeSegmentMs;
-      const inWindow = timeline
+      const inWindow = studioPitchTimeline
         .filter((point) => point.timeMs >= start && point.timeMs < end)
         .map((point) => point.frequency);
 
@@ -792,31 +898,7 @@ export class ExpoPitchCapturePort {
 
     if (detectedFrequencies.length === 0) return null;
 
-    const experimentalDetectedFrequencies: number[] = [];
-    const experimentalDetectedFrequenciesBySegment: Array<number | null> = [];
-    if (studioPitchTimeline.length > 0) {
-      for (let segment = 0; segment < segmentCount; segment += 1) {
-        const start = segment * safeSegmentMs;
-        const end = start + safeSegmentMs;
-        const inWindow = studioPitchTimeline
-          .filter((point) => point.timeMs >= start && point.timeMs < end)
-          .map((point) => point.frequency);
-
-        if (inWindow.length === 0) {
-          experimentalDetectedFrequenciesBySegment.push(null);
-          continue;
-        }
-
-        const bucket = median(inWindow);
-        experimentalDetectedFrequencies.push(bucket);
-        experimentalDetectedFrequenciesBySegment.push(bucket);
-      }
-    }
-
     const detectedMidisBySegment = detectedFrequenciesBySegment.map((frequency) => (
-      frequency == null ? null : noteFromPitch(frequency)
-    ));
-    const experimentalDetectedMidisBySegment = experimentalDetectedFrequenciesBySegment.map((frequency) => (
       frequency == null ? null : noteFromPitch(frequency)
     ));
 
@@ -826,11 +908,18 @@ export class ExpoPitchCapturePort {
       segmentDurationMs: safeSegmentMs,
       detectedFrequenciesBySegment,
       detectedMidisBySegment,
-      experimentalDetectedFrequencies,
-      experimentalDetectedMidis: experimentalDetectedFrequencies.map((frequency) => noteFromPitch(frequency)),
-      experimentalDetectedFrequenciesBySegment,
-      experimentalDetectedMidisBySegment,
     };
+  }
+
+  /**
+   * Post-process a recorded WAV file with the studio pitch detector.
+   * Useful as a more reliable alternative to the real-time analysis path.
+   */
+  async analyzeWavPitch(
+    uri: string,
+    segmentMs = 80,
+  ): Promise<Array<{ timeMs: number; frequency: number }>> {
+    return this.extractStudioPitchTimeline({ fileUri: uri }, segmentMs);
   }
 
   async stop(): Promise<void> {
@@ -839,7 +928,9 @@ export class ExpoPitchCapturePort {
       if (studioStopRecording) {
         try {
           await studioStopRecording();
-        } catch {}
+        } catch (error) {
+          console.log('[pitch:stop] failed to stop active stream', error);
+        }
       }
     }
 

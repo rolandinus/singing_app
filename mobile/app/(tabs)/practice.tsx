@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import React from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { INTERVAL_LABELS, SKILL_DEFINITIONS } from '../../src/core/config/curriculum';
@@ -90,6 +91,7 @@ export default function PracticeScreen() {
   const micOffWarning = useAppStore((s) => s.micOffWarning);
   const nextExercise = useAppStore((s) => s.nextExercise);
   const abortSession = useAppStore((s) => s.abortSession);
+  const stopCapture = useAppStore((s) => s.stopCapture);
   const endSession = useAppStore((s) => s.endSession);
   const locale = settings.locale;
   const familySkills = SKILL_DEFINITIONS.filter((s) => s.family === selectedFamily);
@@ -182,6 +184,14 @@ export default function PracticeScreen() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClef]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      return () => {
+        void stopCapture();
+      };
+    }, [stopCapture]),
+  );
 
   return (
     <Screen>

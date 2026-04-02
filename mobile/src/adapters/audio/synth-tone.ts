@@ -108,14 +108,15 @@ export function renderSynthTonePcm(frequency: number, durationMs = 650): Int16Ar
  * Parameters match the browser MembraneSynth defaults:
  *   pitchDecay 0.008 s, octaves 2, attack 0.001 s, decay 0.3 s
  */
-export function renderMetronomeClickPcm(baseFrequency: number, accent = false): Int16Array {
+export function renderMetronomeClickPcm(baseFrequency: number, accent = false, durationMs = 90): Int16Array {
   // Accent ticks are slightly louder and use a higher base frequency.
   const freq = clamp(baseFrequency, 40, 4_000);
   const octaves = 2;
-  const pitchDecay = 0.008;
+  const durationSeconds = Math.max(60, durationMs) / 1000;
+  const pitchDecay = Math.min(0.008, Math.max(0.004, durationSeconds * 0.18));
   const attackTime = 0.001;
-  const decayTime = 0.3;
-  const durationSeconds = attackTime + decayTime + 0.05; // small tail for safety
+  const releaseTail = Math.min(0.02, Math.max(0.008, durationSeconds * 0.12));
+  const decayTime = Math.max(0.025, durationSeconds - attackTime - releaseTail);
   const sampleCount = Math.ceil(durationSeconds * SAMPLE_RATE);
   const pcm = new Int16Array(sampleCount);
 
@@ -195,8 +196,8 @@ function buildWavDataUri(pcmSamples: Int16Array): string {
   return `data:audio/wav;base64,${bytesToBase64(new Uint8Array(buffer))}`;
 }
 
-export function buildMetronomeClickWavDataUri(baseFrequency: number, accent = false): string {
-  return buildWavDataUri(renderMetronomeClickPcm(baseFrequency, accent));
+export function buildMetronomeClickWavDataUri(baseFrequency: number, accent = false, durationMs = 90): string {
+  return buildWavDataUri(renderMetronomeClickPcm(baseFrequency, accent, durationMs));
 }
 
 export function buildSynthToneWavDataUri(frequency: number, durationMs = 650): string {

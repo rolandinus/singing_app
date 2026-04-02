@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
+import { Circle, Line, Svg, Text as SvgText } from 'react-native-svg';
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer, type AudioStatus } from 'expo-audio';
 import { ExpoAudioPromptPort } from '../../src/adapters/audio/expo-audio-prompt-port';
 import { ExpoPitchCapturePort, type PitchCaptureDebugSnapshot } from '../../src/adapters/pitch/expo-pitch-capture-port';
@@ -8,7 +9,6 @@ import { DEFAULT_MELODY_OPTIONS } from '../../src/core/domain/exercise-generator
 import { t } from '../../src/core/i18n/translator';
 import {
   buildMelodyTimingModel,
-  computeMelodyNoteResults,
   SessionService,
   type MelodyNoteResult,
 } from '../../src/core/services/session-service';
@@ -22,13 +22,10 @@ import { Screen } from '../../src/ui/components/Screen';
 import { Stepper } from '../../src/ui/components/Stepper';
 import { useThemeColors } from '../../src/ui/hooks/use-theme-colors';
 
-type DetectorSource = 'autocorrelation' | 'studio_pitch';
-
 type CaptureSample = {
   timeMs: number;
   frequency: number;
   note: string;
-  detector: DetectorSource;
 };
 
 type CaptureSummary = {
@@ -41,13 +38,6 @@ type CaptureSummary = {
   topNotes: Array<{ note: string; count: number }>;
 };
 
-type ComparisonRow = {
-  timeMs: number;
-  slotNr: number | null;
-  auto: CaptureSample | null;
-  studio: CaptureSample | null;
-};
-
 type SlotDetectorSummary = {
   medianHz: number | null;
   medianNote: string | null;
@@ -55,20 +45,16 @@ type SlotDetectorSummary = {
   noteCountsLabel: string;
 };
 
-type SlotSummary = {
-  slotNr: number;
-  auto: SlotDetectorSummary;
-  studio: SlotDetectorSummary;
-};
-
-type MelodyTimeline = {
-  anchorsMs: number[];
-  bucketMs: number;
+type SingleDetectorRow = {
+  timeMs: number;
+  slotNr: number | null;
+  sample: CaptureSample;
 };
 
 type RecordedTake = {
   uri: string;
   durationMillis: number | null;
+  timestampMs: number | null;
 };
 
 type PitchDebugState = {
@@ -120,10 +106,6 @@ function mergePitchDebugState(previous: PitchDebugState, snapshot: PitchCaptureD
   return next;
 }
 
-function detectorFromEvent(event: PitchCaptureDebugSnapshot): DetectorSource {
-  return event.detector === 'studio_pitch' ? 'studio_pitch' : 'autocorrelation';
-}
-
 function toNoteName(frequency: number): string {
   if (!Number.isFinite(frequency) || frequency <= 0) return 'n/a';
   return midiToScientific(noteFromPitch(frequency));
@@ -153,21 +135,21 @@ function getLatestRecordedTake(captureEvents: PitchCaptureDebugSnapshot[] | null
     return {
       uri: event.uri,
       durationMillis: Number.isFinite(event.durationMillis) ? Number(event.durationMillis) : null,
+      timestampMs: Number.isFinite(event.timestampMs) ? Number(event.timestampMs) : null,
     };
   }
   return null;
 }
 
-function buildCaptureSummary(captureEvents: PitchCaptureDebugSnapshot[] | null, detector: DetectorSource): CaptureSummary | null {
+function buildCaptureSummary(captureEvents: PitchCaptureDebugSnapshot[] | null): CaptureSummary | null {
   if (!captureEvents) return null;
 
   const samples: CaptureSample[] = captureEvents
-    .filter((event) => event.phase === 'analysis_sample' && Number.isFinite(event.frequency) && detectorFromEvent(event) === detector)
+    .filter((event) => event.phase === 'analysis_sample' && Number.isFinite(event.frequency) && event.detector === 'studio_pitch')
     .map((event) => ({
       timeMs: Number(event.sampleTimeMs ?? 0),
       frequency: Number(event.frequency),
       note: toNoteName(Number(event.frequency)),
-      detector,
     }));
 
   if (samples.length === 0) return null;
@@ -196,106 +178,6 @@ function buildCaptureSummary(captureEvents: PitchCaptureDebugSnapshot[] | null, 
     spreadHz: maxHz - minHz,
     topNotes,
   };
-}
-
-function buildComparisonRows(
-  autoSamples: CaptureSample[],
-  studioSamples: CaptureSample[],
-  timeline?: MelodyTimeline | null,
-  slotResolver?: (timeMs: number) => number | null,
-): ComparisonRow[] {
-  if (autoSamples.length === 0 && studioSamples.length === 0 && (!timeline || timeline.anchorsMs.length === 0)) return [];
-
-  const findClosestUnused = (
-    samples: CaptureSample[],
-    used: Set<number>,
-    targetTimeMs: number,
-    maxDistanceMs: number,
-  ): number => {
-    let bestIndex = -1;
-    let bestDelta = Number.POSITIVE_INFINITY;
-
-    samples.forEach((candidate, index) => {
-      if (used.has(index)) return;
-      const delta = Math.abs(candidate.timeMs - targetTimeMs);
-      if (delta < bestDelta) {
-        bestDelta = delta;
-        bestIndex = index;
-      }
-    });
-
-    return bestIndex >= 0 && bestDelta <= maxDistanceMs ? bestIndex : -1;
-  };
-
-  const usedAuto = new Set<number>();
-  const usedStudio = new Set<number>();
-  const rows: ComparisonRow[] = [];
-
-  if (timeline && timeline.anchorsMs.length > 0) {
-    const maxDistanceMs = Math.max(120, Math.round(timeline.bucketMs * 0.65));
-    timeline.anchorsMs.forEach((timeMs) => {
-      const autoIndex = findClosestUnused(autoSamples, usedAuto, timeMs, maxDistanceMs);
-      const studioIndex = findClosestUnused(studioSamples, usedStudio, timeMs, maxDistanceMs);
-      if (autoIndex >= 0) usedAuto.add(autoIndex);
-      if (studioIndex >= 0) usedStudio.add(studioIndex);
-
-      rows.push({
-        timeMs,
-        slotNr: slotResolver ? slotResolver(timeMs) : null,
-        auto: autoIndex >= 0 ? autoSamples[autoIndex] ?? null : null,
-        studio: studioIndex >= 0 ? studioSamples[studioIndex] ?? null : null,
-      });
-    });
-  } else {
-    autoSamples.forEach((sample, sampleIdx) => {
-      let bestIndex = -1;
-      let bestDelta = Number.POSITIVE_INFINITY;
-
-      studioSamples.forEach((candidate, index) => {
-        if (usedStudio.has(index)) return;
-        const delta = Math.abs(candidate.timeMs - sample.timeMs);
-        if (delta < bestDelta) {
-          bestDelta = delta;
-          bestIndex = index;
-        }
-      });
-
-      const studio = bestIndex >= 0 && bestDelta <= 240 ? studioSamples[bestIndex] : null;
-      if (bestIndex >= 0 && studio) {
-        usedStudio.add(bestIndex);
-      }
-
-      usedAuto.add(sampleIdx);
-      rows.push({
-        timeMs: sample.timeMs,
-        slotNr: slotResolver ? slotResolver(sample.timeMs) : null,
-        auto: sample,
-        studio,
-      });
-    });
-  }
-
-  autoSamples.forEach((sample, index) => {
-    if (usedAuto.has(index)) return;
-    rows.push({
-      timeMs: sample.timeMs,
-      slotNr: slotResolver ? slotResolver(sample.timeMs) : null,
-      auto: sample,
-      studio: null,
-    });
-  });
-
-  studioSamples.forEach((sample, index) => {
-    if (usedStudio.has(index)) return;
-    rows.push({
-      timeMs: sample.timeMs,
-      slotNr: slotResolver ? slotResolver(sample.timeMs) : null,
-      auto: null,
-      studio: sample,
-    });
-  });
-
-  return rows.sort((a, b) => a.timeMs - b.timeMs).slice(-120);
 }
 
 function buildSlotDetectorSummary(samples: CaptureSample[]): SlotDetectorSummary {
@@ -328,14 +210,27 @@ function buildSlotDetectorSummary(samples: CaptureSample[]): SlotDetectorSummary
   };
 }
 
-function buildSlotSummaries(rows: ComparisonRow[]): SlotSummary[] {
-  const grouped = new Map<number, { auto: CaptureSample[]; studio: CaptureSample[] }>();
+function buildSingleDetectorRows(
+  samples: CaptureSample[],
+  slotResolver?: (timeMs: number) => number | null,
+): SingleDetectorRow[] {
+  return [...samples]
+    .sort((a, b) => a.timeMs - b.timeMs)
+    .slice(-160)
+    .map((sample) => ({
+      timeMs: sample.timeMs,
+      slotNr: slotResolver ? slotResolver(sample.timeMs) : null,
+      sample,
+    }));
+}
+
+function buildSingleDetectorSlotSummaries(rows: SingleDetectorRow[]): Array<{ slotNr: number; summary: SlotDetectorSummary }> {
+  const grouped = new Map<number, CaptureSample[]>();
   rows.forEach((row) => {
     if (!Number.isFinite(row.slotNr)) return;
     const slotNr = Number(row.slotNr);
-    const existing = grouped.get(slotNr) ?? { auto: [], studio: [] };
-    if (row.auto) existing.auto.push(row.auto);
-    if (row.studio) existing.studio.push(row.studio);
+    const existing = grouped.get(slotNr) ?? [];
+    existing.push(row.sample);
     grouped.set(slotNr, existing);
   });
 
@@ -343,21 +238,18 @@ function buildSlotSummaries(rows: ComparisonRow[]): SlotSummary[] {
     .sort((a, b) => a[0] - b[0])
     .map(([slotNr, samples]) => ({
       slotNr,
-      auto: buildSlotDetectorSummary(samples.auto),
-      studio: buildSlotDetectorSummary(samples.studio),
+      summary: buildSlotDetectorSummary(samples),
     }));
 }
 
-function latestDetectorMessage(
-  captureEvents: PitchCaptureDebugSnapshot[] | null,
-  detector: DetectorSource,
-): string | null {
+function latestCaptureMessage(captureEvents: PitchCaptureDebugSnapshot[] | null): string | null {
   if (!captureEvents) return null;
   for (let i = captureEvents.length - 1; i >= 0; i -= 1) {
     const event = captureEvents[i];
     const message = event.message ?? '';
-    if (detectorFromEvent(event) === detector && message) return message;
-    if (detector === 'studio_pitch' && message.startsWith('studio_pitch_')) return message;
+    if (!message) continue;
+    if (event.detector === 'studio_pitch') return message;
+    if (message.startsWith('studio_pitch_') || message === 'analysis_finished' || message === 'analysis_finished_without_pitch') return message;
   }
   return null;
 }
@@ -380,19 +272,6 @@ function noteBeats(duration: NoteType): number {
 
 function totalMelodyBeats(exercise: Exercise | null): number {
   return Math.max(1, getMelodyNoteObjects(exercise).reduce((sum, note) => sum + noteBeats(note.duration), 0));
-}
-
-function buildMelodyTimeline(exercise: Exercise | null, bpm: number): MelodyTimeline | null {
-  if (!exercise || exercise.skillKey !== 'sing_melody') return null;
-
-  const beats = totalMelodyBeats(exercise);
-  const timing = buildMelodyTimingModel(bpm, beats);
-  const bucketMs = Math.max(250, timing.segmentMs);
-  const totalDurationMs = Math.max(bucketMs, timing.captureDurationMs);
-  const bucketCount = Math.max(1, Math.ceil(totalDurationMs / bucketMs));
-
-  const anchorsMs = Array.from({ length: bucketCount }, (_, index) => index * bucketMs);
-  return { anchorsMs, bucketMs };
 }
 
 function resolveMelodySlotNr(exercise: Exercise | null, bpm: number, timeMs: number): number | null {
@@ -420,16 +299,6 @@ function resolveMelodySlotNr(exercise: Exercise | null, bpm: number, timeMs: num
   }
 
   return null;
-}
-
-function normalizeDetectedMidis(targetCount: number, detectedMidis: number[]): number[] {
-  if (targetCount <= 0 || detectedMidis.length === 0) return [];
-  return Array.from({ length: targetCount }, (_, targetIdx) => {
-    if (targetCount === 1) return detectedMidis[0];
-    const ratio = targetIdx / (targetCount - 1);
-    const sourceIdx = Math.round(ratio * (detectedMidis.length - 1));
-    return detectedMidis[Math.max(0, Math.min(detectedMidis.length - 1, sourceIdx))];
-  });
 }
 
 function formatHz(value: number | null): string {
@@ -461,20 +330,82 @@ function formatDetectedMidi(result: MelodyNoteResult | null): string {
   return midiToScientific(result.detectedMidi);
 }
 
-function summaryLabel(locale: 'de' | 'en', detector: DetectorSource): string {
-  return detector === 'studio_pitch'
-    ? t(locale, 'debug_compare_experimental')
-    : t(locale, 'debug_compare_current');
+// Octave reference lines drawn on the chart (C2–C6)
+const CHART_GRID: Array<{ hz: number; label: string }> = [
+  { hz: 65.41, label: 'C2' },
+  { hz: 130.81, label: 'C3' },
+  { hz: 261.63, label: 'C4' },
+  { hz: 523.25, label: 'C5' },
+  { hz: 1046.5, label: 'C6' },
+];
+const CHART_MIN_HZ = 60;
+const CHART_MAX_HZ = 1400;
+const CHART_LOG_MIN = Math.log2(CHART_MIN_HZ);
+const CHART_LOG_MAX = Math.log2(CHART_MAX_HZ);
+
+function PitchTimelineChart({
+  samples,
+  durationMs,
+  playbackMs,
+}: {
+  samples: Array<{ timeMs: number; frequency: number }>;
+  durationMs: number;
+  playbackMs: number;
+}) {
+  const colors = useThemeColors();
+  const [chartWidth, setChartWidth] = React.useState(300);
+  const height = 160;
+  const padLeft = 34;
+  const drawW = Math.max(1, chartWidth - padLeft);
+  const safeDuration = Math.max(1, durationMs);
+
+  const toX = (ms: number) => padLeft + (ms / safeDuration) * drawW;
+  const toY = (hz: number) => {
+    const clamped = Math.max(CHART_MIN_HZ, Math.min(CHART_MAX_HZ, hz));
+    return height - ((Math.log2(clamped) - CHART_LOG_MIN) / (CHART_LOG_MAX - CHART_LOG_MIN)) * height;
+  };
+
+  const cursorX = toX(playbackMs);
+
+  return (
+    <View
+      style={{ height, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: colors.borderLight, backgroundColor: colors.surfaceNeutral }}
+      onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}
+    >
+      <Svg width={chartWidth} height={height}>
+        {CHART_GRID.map(({ hz, label }) => {
+          const y = toY(hz);
+          return (
+            <React.Fragment key={label}>
+              <Line x1={padLeft} x2={chartWidth} y1={y} y2={y} stroke={colors.borderLight} strokeWidth={1} />
+              <SvgText x={2} y={y + 4} fontSize={9} fill={colors.textMuted}>{label}</SvgText>
+            </React.Fragment>
+          );
+        })}
+        {samples.map((pt, i) => (
+          <Circle
+            key={i}
+            cx={toX(pt.timeMs)}
+            cy={toY(pt.frequency)}
+            r={3}
+            fill={colors.primaryStrong}
+            opacity={0.75}
+          />
+        ))}
+        {playbackMs > 0 && cursorX >= padLeft && (
+          <Line x1={cursorX} x2={cursorX} y1={0} y2={height} stroke={colors.danger} strokeWidth={2} />
+        )}
+      </Svg>
+    </View>
+  );
 }
 
 function SummaryBlock({
   locale,
-  detector,
   summary,
   statusMessage,
 }: {
   locale: 'de' | 'en';
-  detector: DetectorSource;
   summary: CaptureSummary | null;
   statusMessage?: string | null;
 }) {
@@ -493,7 +424,7 @@ function SummaryBlock({
         gap: 4,
       }}
     >
-      <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{summaryLabel(locale, detector)}</Text>
+      <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{t(locale, 'debug_compare_experimental')}</Text>
       {!summary ? (
         <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t(locale, 'debug_compare_unavailable')}</Text>
       ) : (
@@ -505,7 +436,7 @@ function SummaryBlock({
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
             {summary.topNotes.slice(0, 4).map((entry) => (
               <View
-                key={`${detector}-${entry.note}-${entry.count}`}
+                key={`${entry.note}-${entry.count}`}
                 style={{
                   borderWidth: 1,
                   borderColor: colors.border,
@@ -563,7 +494,6 @@ export default function DebugScreen() {
   const [melodyExercise, setMelodyExercise] = React.useState<Exercise | null>(null);
   const [melodyFeedback, setMelodyFeedback] = React.useState({ text: '', isCorrect: false });
   const [melodyNoteResults, setMelodyNoteResults] = React.useState<MelodyNoteResult[]>([]);
-  const [experimentalMelodyNoteResults, setExperimentalMelodyNoteResults] = React.useState<MelodyNoteResult[]>([]);
   const [melodyCountInBeat, setMelodyCountInBeat] = React.useState<number | null>(null);
   const [melodyRecordingProgress, setMelodyRecordingProgress] = React.useState<number | null>(null);
   const [singingNoteIndex, setSingingNoteIndex] = React.useState<number | null>(null);
@@ -572,11 +502,15 @@ export default function DebugScreen() {
   const [loadingStop, setLoadingStop] = React.useState(false);
   const [replayStatus, setReplayStatus] = React.useState<AudioStatus | null>(null);
   const [replayError, setReplayError] = React.useState<string | null>(null);
+  const [wavTimeline, setWavTimeline] = React.useState<Array<{ timeMs: number; frequency: number }>>([]);
+  const [wavAnalysisLoading, setWavAnalysisLoading] = React.useState(false);
+  const [wavAnalysisError, setWavAnalysisError] = React.useState<string | null>(null);
   const captureRunIdRef = React.useRef(0);
   const recordingProgressIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
   const replayPlayerRef = React.useRef<AudioPlayer | null>(null);
   const replayPlayerUriRef = React.useRef<string | null>(null);
   const replayStatusSubRef = React.useRef<{ remove: () => void } | null>(null);
+  const wavAnalysisRunRef = React.useRef(0);
 
   const disposeReplayPlayer = React.useCallback(() => {
     replayStatusSubRef.current?.remove();
@@ -609,7 +543,6 @@ export default function DebugScreen() {
     }
     setReplayStatus((previous) => (previous ? { ...previous, playing: false } : previous));
   }, []);
-
   React.useEffect(() => {
     let active = true;
 
@@ -664,7 +597,6 @@ export default function DebugScreen() {
     }));
     setMelodyFeedback({ text: '', isCorrect: false });
     setMelodyNoteResults([]);
-    setExperimentalMelodyNoteResults([]);
     setMelodyCountInBeat(null);
     setMelodyRecordingProgress(null);
     setSingingNoteIndex(null);
@@ -716,7 +648,6 @@ export default function DebugScreen() {
     }));
     setMelodyFeedback({ text: '', isCorrect: false });
     setMelodyNoteResults([]);
-    setExperimentalMelodyNoteResults([]);
     setMelodyCountInBeat(null);
     setMelodyRecordingProgress(null);
     setSingingNoteIndex(null);
@@ -737,9 +668,11 @@ export default function DebugScreen() {
     }
 
     setLoadingCapture(true);
+    disposeReplayPlayer();
+    setReplayStatus(null);
+    setReplayError(null);
     setMelodyFeedback({ text: '', isCorrect: false });
     setMelodyNoteResults([]);
-    setExperimentalMelodyNoteResults([]);
     setMelodyCountInBeat(null);
     setMelodyRecordingProgress(null);
     setSingingNoteIndex(null);
@@ -789,35 +722,6 @@ export default function DebugScreen() {
         isCorrect: outcome.evaluation.correct,
       });
       setMelodyNoteResults(outcome.noteResults);
-
-      const targetMidis = Array.isArray((melodyExercise.expectedAnswer as Record<string, unknown>).targetMidis)
-        ? ((melodyExercise.expectedAnswer as Record<string, unknown>).targetMidis as number[]).filter((value) => Number.isFinite(value))
-        : [];
-      const experimentalDetectedMidisBySlot = Array.isArray((outcome.contour as Record<string, unknown> | null)?.experimentalDetectedMidisBySlot)
-        ? (((outcome.contour as Record<string, unknown>).experimentalDetectedMidisBySlot as Array<number | null>)
-          .map((value) => (Number.isFinite(value) ? Number(value) : null)))
-        : [];
-      const experimentalDetectedMidis = Array.isArray(outcome.contour?.experimentalDetectedMidis)
-        ? (outcome.contour?.experimentalDetectedMidis as number[]).filter((value) => Number.isFinite(value))
-        : [];
-      const toleranceCents = Number(settings.pitchToleranceCentsByLevel?.[melodyExercise.level] ?? 50);
-      if (targetMidis.length > 0 && experimentalDetectedMidisBySlot.length > 0) {
-        setExperimentalMelodyNoteResults(
-          computeMelodyNoteResults(
-            targetMidis,
-            experimentalDetectedMidisBySlot,
-            toleranceCents,
-          ),
-        );
-      } else if (targetMidis.length > 0 && experimentalDetectedMidis.length > 0) {
-        setExperimentalMelodyNoteResults(
-          computeMelodyNoteResults(
-            targetMidis,
-            normalizeDetectedMidis(targetMidis.length, experimentalDetectedMidis),
-            toleranceCents,
-          ),
-        );
-      }
     } catch (error) {
       console.error('[debug:capture] melody capture failed', error);
       if (captureRunIdRef.current !== runId) return;
@@ -836,23 +740,18 @@ export default function DebugScreen() {
       setMelodyRecordingProgress(null);
       setSingingNoteIndex(null);
     }
-  }, [loadingCapture, melodyBpm, melodyExercise, service, settings.pitchToleranceCentsByLevel]);
+  }, [disposeReplayPlayer, loadingCapture, melodyBpm, melodyExercise, service]);
 
   const captureEvents = getLatestCaptureEvents(events);
   const recordedTake = getLatestRecordedTake(captureEvents);
-  const autoSummary = buildCaptureSummary(captureEvents, 'autocorrelation');
-  const studioSummary = buildCaptureSummary(captureEvents, 'studio_pitch');
-  const melodyTimeline = buildMelodyTimeline(melodyExercise, melodyBpm);
-  const comparisonRows = buildComparisonRows(
-    autoSummary?.samples ?? [],
+  const studioSummary = buildCaptureSummary(captureEvents);
+  const liveRows = buildSingleDetectorRows(
     studioSummary?.samples ?? [],
-    melodyTimeline,
     (timeMs) => resolveMelodySlotNr(melodyExercise, melodyBpm, timeMs),
   );
-  const slotSummaries = buildSlotSummaries(comparisonRows);
-  const slotSummaryByNr = new Map(slotSummaries.map((summary) => [summary.slotNr, summary]));
-  const autoStatusMessage = latestDetectorMessage(captureEvents, 'autocorrelation');
-  const studioStatusMessage = latestDetectorMessage(captureEvents, 'studio_pitch');
+  const liveSlotSummaries = buildSingleDetectorSlotSummaries(liveRows);
+  const liveSlotSummaryByNr = new Map(liveSlotSummaries.map((entry) => [entry.slotNr, entry.summary]));
+  const studioStatusMessage = latestCaptureMessage(captureEvents);
   const replayTimeSeconds = replayStatus?.currentTime ?? 0;
   const replayDurationSeconds = replayStatus?.duration
     ?? (recordedTake?.durationMillis != null ? recordedTake.durationMillis / 1000 : 0);
@@ -860,10 +759,24 @@ export default function DebugScreen() {
     ? resolveMelodySlotNr(melodyExercise, melodyBpm, replayTimeSeconds * 1000)
     : null;
   const activeReplayResult = activeReplaySlotNr != null ? melodyNoteResults[activeReplaySlotNr - 1] ?? null : null;
-  const activeExperimentalReplayResult = activeReplaySlotNr != null ? experimentalMelodyNoteResults[activeReplaySlotNr - 1] ?? null : null;
-  const activeReplaySlotSummary = activeReplaySlotNr != null ? slotSummaryByNr.get(activeReplaySlotNr) ?? null : null;
+  const activeLiveSlotSummary = activeReplaySlotNr != null ? liveSlotSummaryByNr.get(activeReplaySlotNr) ?? null : null;
   const melodyNotes = getMelodyNoteObjects(melodyExercise);
   const activeReplayTarget = activeReplaySlotNr != null ? melodyNotes[activeReplaySlotNr - 1]?.pitch ?? null : null;
+  const chartSamples = wavTimeline.length > 0 ? wavTimeline : (studioSummary?.samples ?? []);
+  const chartDurationMs = replayDurationSeconds > 0
+    ? replayDurationSeconds * 1000
+    : (recordedTake?.durationMillis ?? 0);
+  const wavSamples: CaptureSample[] = wavTimeline.map((point) => ({
+    timeMs: point.timeMs,
+    frequency: point.frequency,
+    note: toNoteName(point.frequency),
+  }));
+  const wavRows = buildSingleDetectorRows(
+    wavSamples,
+    (timeMs) => resolveMelodySlotNr(melodyExercise, melodyBpm, timeMs),
+  );
+  const wavSlotSummaries = buildSingleDetectorSlotSummaries(wavRows);
+  const wavSlotSummaryByNr = new Map(wavSlotSummaries.map((entry) => [entry.slotNr, entry.summary]));
 
   React.useEffect(() => {
     if (!recordedTake?.uri) {
@@ -873,11 +786,50 @@ export default function DebugScreen() {
       return;
     }
 
-    if (replayPlayerUriRef.current && replayPlayerUriRef.current !== recordedTake.uri) {
+    if (
+      replayPlayerUriRef.current
+      && (
+        replayPlayerUriRef.current !== recordedTake.uri
+        || recordedTake.timestampMs != null
+      )
+    ) {
       disposeReplayPlayer();
       setReplayStatus(null);
     }
-  }, [disposeReplayPlayer, recordedTake?.uri]);
+  }, [disposeReplayPlayer, recordedTake?.timestampMs, recordedTake?.uri]);
+
+  React.useEffect(() => {
+    wavAnalysisRunRef.current += 1;
+    setWavTimeline([]);
+    setWavAnalysisLoading(false);
+    setWavAnalysisError(null);
+  }, [recordedTake?.timestampMs, recordedTake?.uri]);
+
+  const reprocessRecordedTake = React.useCallback(() => {
+    const port = pitchPortRef.current;
+    if (!recordedTake?.uri || !port) return;
+
+    wavAnalysisRunRef.current += 1;
+    const runId = wavAnalysisRunRef.current;
+    setWavTimeline([]);
+    setWavAnalysisLoading(true);
+    setWavAnalysisError(null);
+
+    void port.analyzeWavPitch(recordedTake.uri, 80)
+      .then((timeline) => {
+        if (wavAnalysisRunRef.current !== runId) return;
+        setWavTimeline(timeline);
+      })
+      .catch((error) => {
+        console.error('[debug:wav] WAV pitch analysis failed', error);
+        if (wavAnalysisRunRef.current !== runId) return;
+        setWavAnalysisError(error instanceof Error && error.message ? error.message : 'WAV pitch analysis failed.');
+      })
+      .finally(() => {
+        if (wavAnalysisRunRef.current !== runId) return;
+        setWavAnalysisLoading(false);
+      });
+  }, [recordedTake?.uri]);
 
   const playRecordedTake = React.useCallback(async (restart = false) => {
     if (!recordedTake?.uri) return;
@@ -1029,6 +981,19 @@ export default function DebugScreen() {
                 <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{t(locale, 'debug_melody_replay_unavailable')}</Text>
               ) : (
                 <>
+                  {chartSamples.length > 0 ? (
+                    <PitchTimelineChart
+                      samples={chartSamples}
+                      durationMs={chartDurationMs}
+                      playbackMs={replayTimeSeconds * 1000}
+                    />
+                  ) : wavAnalysisLoading ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 8 }}>
+                      <ActivityIndicator size="small" color={colors.primaryStrong} />
+                      <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>Analysiere WAV…</Text>
+                    </View>
+                  ) : null}
+
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                     <Pressable
                       onPress={() => void playRecordedTake(replayStatus?.currentTime ? true : false)}
@@ -1065,6 +1030,24 @@ export default function DebugScreen() {
                     >
                       <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>{t(locale, 'debug_melody_replay_stop')}</Text>
                     </Pressable>
+
+                    <Pressable
+                      onPress={reprocessRecordedTake}
+                      disabled={wavAnalysisLoading}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: colors.borderBlue,
+                        backgroundColor: colors.surfaceInfo,
+                        borderRadius: 999,
+                        minHeight: 38,
+                        paddingHorizontal: 14,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: wavAnalysisLoading ? 0.45 : 1,
+                      }}
+                    >
+                      <Text style={{ color: colors.primaryStrong, fontWeight: '700' }}>{t(locale, 'debug_melody_replay_reprocess')}</Text>
+                    </Pressable>
                   </View>
 
                   <View
@@ -1089,16 +1072,21 @@ export default function DebugScreen() {
                     <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
                       {t(locale, 'debug_melody_replay_detected_current')}: {formatDetectedMidi(activeReplayResult)}
                     </Text>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                      {t(locale, 'debug_melody_replay_detected_experimental')}: {formatDetectedMidi(activeExperimentalReplayResult)}
-                    </Text>
-                    {activeReplaySlotSummary ? (
+                    {activeLiveSlotSummary ? (
                       <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                        {t(locale, 'debug_melody_replay_slot_summary')}: {summaryLabel(locale, 'autocorrelation')} {activeReplaySlotSummary.auto.modeNote ?? 'n/a'} | {summaryLabel(locale, 'studio_pitch')} {activeReplaySlotSummary.studio.modeNote ?? 'n/a'}
+                        {t(locale, 'debug_melody_replay_slot_summary')}: {activeLiveSlotSummary.modeNote ?? 'n/a'} ({activeLiveSlotSummary.noteCountsLabel})
+                      </Text>
+                    ) : null}
+                    {activeReplaySlotNr != null && wavSlotSummaryByNr.get(activeReplaySlotNr) ? (
+                      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                        {t(locale, 'debug_wav_analysis_detector')}: {wavSlotSummaryByNr.get(activeReplaySlotNr)?.medianNote ?? 'n/a'} ({wavSlotSummaryByNr.get(activeReplaySlotNr)?.noteCountsLabel ?? 'n/a'})
                       </Text>
                     ) : null}
                     {replayError ? (
                       <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '700' }}>{replayError}</Text>
+                    ) : null}
+                    {wavAnalysisError ? (
+                      <Text style={{ color: colors.danger, fontSize: 12, fontWeight: '700' }}>{wavAnalysisError}</Text>
                     ) : null}
                   </View>
                 </>
@@ -1111,58 +1099,115 @@ export default function DebugScreen() {
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t(locale, 'debug_melody_detection_hint')}</Text>
 
                 <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false}>
-                  <View style={{ minWidth: 760, gap: 6 }}>
+                  <View style={{ minWidth: 420, gap: 6 }}>
                     <View style={{ flexDirection: 'row', paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
                       <Text style={{ color: colors.textMuted, fontWeight: '700', width: 36 }}>#</Text>
                       <Text style={{ color: colors.textMuted, fontWeight: '700', width: 72 }}>{t(locale, 'debug_melody_target')}</Text>
-                      <Text style={{ color: colors.textMuted, fontWeight: '700', width: 118 }}>{t(locale, 'debug_compare_current')}</Text>
-                      <Text style={{ color: colors.textMuted, fontWeight: '700', width: 72 }}>{t(locale, 'debug_melody_delta')}</Text>
-                      <Text style={{ color: colors.textMuted, fontWeight: '700', width: 74 }}>{t(locale, 'debug_melody_score')}</Text>
-                      <Text style={{ color: colors.textMuted, fontWeight: '700', width: 118 }}>{t(locale, 'debug_compare_experimental')}</Text>
+                      <Text style={{ color: colors.textMuted, fontWeight: '700', width: 118 }}>{t(locale, 'debug_melody_detected')}</Text>
                       <Text style={{ color: colors.textMuted, fontWeight: '700', width: 72 }}>{t(locale, 'debug_melody_delta')}</Text>
                       <Text style={{ color: colors.textMuted, fontWeight: '700', width: 74 }}>{t(locale, 'debug_melody_score')}</Text>
                     </View>
 
-                    {melodyNoteResults.map((result, index) => {
-                      const experimentalResult = experimentalMelodyNoteResults[index] ?? null;
-                      return (
-                        <View
-                          key={result.noteIndex}
-                          style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            paddingVertical: 8,
-                            borderBottomWidth: 1,
-                            borderBottomColor: activeReplaySlotNr === result.noteIndex + 1 ? colors.borderBlue : colors.border,
-                            backgroundColor: activeReplaySlotNr === result.noteIndex + 1
-                              ? colors.surfaceInfo
-                              : result.correct ? colors.noteResultOkBg : colors.noteResultBadBg,
-                            borderRadius: 8,
-                            paddingHorizontal: 8,
-                            borderWidth: activeReplaySlotNr === result.noteIndex + 1 ? 1 : 0,
-                          }}
-                        >
-                          <Text style={{ color: colors.textPrimary, width: 36, fontWeight: '700' }}>{result.noteIndex + 1}</Text>
-                          <Text style={{ color: colors.textSecondary, width: 72 }}>{midiToScientific(result.targetMidi)}</Text>
-                          <Text style={{ color: colors.textSecondary, width: 118 }}>{formatDetectedMidi(result)}</Text>
-                          <Text style={{ color: result.correct ? colors.success : colors.danger, width: 72, fontWeight: '700' }}>{formatSignedCents(result)}</Text>
-                          <Text style={{ color: colors.textPrimary, width: 74, fontWeight: '700' }}>{Math.round(result.score * 100)}%</Text>
-                          <Text style={{ color: colors.textSecondary, width: 118 }}>{formatDetectedMidi(experimentalResult)}</Text>
-                          <Text style={{ color: experimentalResult?.correct ? colors.success : colors.danger, width: 72, fontWeight: '700' }}>
-                            {experimentalResult ? formatSignedCents(experimentalResult) : 'n/a'}
-                          </Text>
-                          <Text style={{ color: colors.textPrimary, width: 74, fontWeight: '700' }}>
-                            {experimentalResult ? `${Math.round(experimentalResult.score * 100)}%` : 'n/a'}
-                          </Text>
-                        </View>
-                      );
-                    })}
+                    {melodyNoteResults.map((result) => (
+                      <View
+                        key={result.noteIndex}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          paddingVertical: 8,
+                          borderBottomWidth: 1,
+                          borderBottomColor: activeReplaySlotNr === result.noteIndex + 1 ? colors.borderBlue : colors.border,
+                          backgroundColor: activeReplaySlotNr === result.noteIndex + 1
+                            ? colors.surfaceInfo
+                            : result.correct ? colors.noteResultOkBg : colors.noteResultBadBg,
+                          borderRadius: 8,
+                          paddingHorizontal: 8,
+                          borderWidth: activeReplaySlotNr === result.noteIndex + 1 ? 1 : 0,
+                        }}
+                      >
+                        <Text style={{ color: colors.textPrimary, width: 36, fontWeight: '700' }}>{result.noteIndex + 1}</Text>
+                        <Text style={{ color: colors.textSecondary, width: 72 }}>{midiToScientific(result.targetMidi)}</Text>
+                        <Text style={{ color: colors.textSecondary, width: 118 }}>{formatDetectedMidi(result)}</Text>
+                        <Text style={{ color: result.correct ? colors.success : colors.danger, width: 72, fontWeight: '700' }}>{formatSignedCents(result)}</Text>
+                        <Text style={{ color: colors.textPrimary, width: 74, fontWeight: '700' }}>{Math.round(result.score * 100)}%</Text>
+                      </View>
+                    ))}
                   </View>
                 </ScrollView>
+              </View>
+            ) : null}
 
-                {experimentalMelodyNoteResults.length === 0 ? (
-                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t(locale, 'debug_compare_unavailable')}</Text>
-                ) : null}
+            {wavRows.length > 0 ? (
+              <View style={{ gap: 8 }}>
+                <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{t(locale, 'debug_wav_analysis_title')}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t(locale, 'debug_wav_analysis_hint')}</Text>
+
+                <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false}>
+                  <View style={{ minWidth: 520 }}>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        paddingVertical: 6,
+                        borderBottomWidth: 1,
+                        borderBottomColor: colors.borderLight,
+                      }}
+                    >
+                      <Text style={{ color: colors.textMuted, fontWeight: '600', width: 86 }}>{t(locale, 'debug_pitch_time_ms')}</Text>
+                      <Text style={{ color: colors.textMuted, fontWeight: '600', width: 64 }}>{t(locale, 'debug_compare_slot_nr')}</Text>
+                      <Text style={{ color: colors.textMuted, fontWeight: '600', width: 150 }}>{t(locale, 'debug_wav_analysis_detector')}</Text>
+                      <Text style={{ color: colors.textMuted, fontWeight: '600', flex: 1 }}>{t(locale, 'debug_melody_target')}</Text>
+                    </View>
+
+                    <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled>
+                      {wavRows.map((row, index) => {
+                        const nextRow = wavRows[index + 1] ?? null;
+                        const slotFinished = row.slotNr != null && nextRow?.slotNr !== row.slotNr;
+                        const slotSummary = row.slotNr != null ? wavSlotSummaryByNr.get(row.slotNr) ?? null : null;
+                        const target = row.slotNr != null ? melodyNotes[row.slotNr - 1]?.pitch ?? null : null;
+                        return (
+                          <React.Fragment key={`wav-${row.timeMs}-${index}`}>
+                            <View
+                              style={{
+                                flexDirection: 'row',
+                                paddingVertical: 5,
+                                borderBottomWidth: 1,
+                                borderBottomColor: activeReplaySlotNr != null && row.slotNr === activeReplaySlotNr ? colors.borderBlue : colors.border,
+                                backgroundColor: activeReplaySlotNr != null && row.slotNr === activeReplaySlotNr ? colors.surfaceInfo : 'transparent',
+                              }}
+                            >
+                              <Text style={{ color: colors.textSecondary, width: 86, fontSize: 12 }}>{formatMs(row.timeMs)}</Text>
+                              <Text style={{ color: colors.textSecondary, width: 64, fontSize: 12 }}>{row.slotNr ?? 'n/a'}</Text>
+                              <Text style={{ color: colors.textSecondary, width: 150, fontSize: 12 }}>
+                                {`${row.sample.note} • ${formatHz(row.sample.frequency)}`}
+                              </Text>
+                              <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>{target ?? 'n/a'}</Text>
+                            </View>
+                            {slotFinished && slotSummary ? (
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  paddingVertical: 6,
+                                  backgroundColor: colors.surfaceNeutral,
+                                  borderBottomWidth: 1,
+                                  borderBottomColor: colors.borderLight,
+                                }}
+                              >
+                                <Text style={{ color: colors.primaryStrong, width: 86, fontSize: 12, fontWeight: '700' }}>slot total</Text>
+                                <Text style={{ color: colors.primaryStrong, width: 64, fontSize: 12, fontWeight: '700' }}>{row.slotNr}</Text>
+                                <Text style={{ color: colors.textPrimary, width: 150, fontSize: 12 }}>
+                                  median: {slotSummary.medianNote ?? 'n/a'} • {formatHz(slotSummary.medianHz)}
+                                </Text>
+                                <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>
+                                  counts: {slotSummary.noteCountsLabel}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </React.Fragment>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                </ScrollView>
               </View>
             ) : null}
           </>
@@ -1199,14 +1244,13 @@ export default function DebugScreen() {
           <>
             <Text style={{ color: colors.textPrimary, fontWeight: '700', marginTop: 6 }}>{t(locale, 'debug_pitch_latest')}</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-              <SummaryBlock locale={locale} detector="autocorrelation" summary={autoSummary} statusMessage={autoStatusMessage} />
-              <SummaryBlock locale={locale} detector="studio_pitch" summary={studioSummary} statusMessage={studioStatusMessage} />
+              <SummaryBlock locale={locale} summary={studioSummary} statusMessage={studioStatusMessage} />
             </View>
 
             <Text style={{ color: colors.textPrimary, fontWeight: '700', marginTop: 8 }}>{t(locale, 'debug_compare_samples_title')}</Text>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t(locale, 'debug_compare_samples_hint')}</Text>
             <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false}>
-              <View style={{ minWidth: 640 }}>
+              <View style={{ minWidth: 520 }}>
                 <View
                   style={{
                     flexDirection: 'row',
@@ -1217,16 +1261,14 @@ export default function DebugScreen() {
                 >
                   <Text style={{ color: colors.textMuted, fontWeight: '600', width: 86 }}>{t(locale, 'debug_pitch_time_ms')}</Text>
                   <Text style={{ color: colors.textMuted, fontWeight: '600', width: 64 }}>{t(locale, 'debug_compare_slot_nr')}</Text>
-                  <Text style={{ color: colors.textMuted, fontWeight: '600', width: 114 }}>{t(locale, 'debug_compare_current')}</Text>
-                  <Text style={{ color: colors.textMuted, fontWeight: '600', width: 120 }}>{t(locale, 'debug_compare_experimental')}</Text>
-                  <Text style={{ color: colors.textMuted, fontWeight: '600', flex: 1 }}>{t(locale, 'debug_compare_delta_hz')}</Text>
+                  <Text style={{ color: colors.textMuted, fontWeight: '600', width: 150 }}>{t(locale, 'debug_compare_experimental')}</Text>
+                  <Text style={{ color: colors.textMuted, fontWeight: '600', flex: 1 }}>{t(locale, 'debug_pitch_frequency')}</Text>
                 </View>
                 <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled>
-                  {comparisonRows.map((row, index) => {
-                    const deltaHz = row.auto && row.studio ? Math.abs(row.auto.frequency - row.studio.frequency) : null;
-                    const nextRow = comparisonRows[index + 1] ?? null;
+                  {liveRows.map((row, index) => {
+                    const nextRow = liveRows[index + 1] ?? null;
                     const slotFinished = row.slotNr != null && nextRow?.slotNr !== row.slotNr;
-                    const slotSummary = row.slotNr != null ? slotSummaryByNr.get(row.slotNr) ?? null : null;
+                    const slotSummary = row.slotNr != null ? liveSlotSummaryByNr.get(row.slotNr) ?? null : null;
                     return (
                       <React.Fragment key={`${row.timeMs}-${index}`}>
                         <View
@@ -1240,57 +1282,30 @@ export default function DebugScreen() {
                         >
                           <Text style={{ color: colors.textSecondary, width: 86, fontSize: 12 }}>{formatMs(row.timeMs)}</Text>
                           <Text style={{ color: colors.textSecondary, width: 64, fontSize: 12 }}>{row.slotNr ?? 'n/a'}</Text>
-                          <Text style={{ color: colors.textSecondary, width: 114, fontSize: 12 }}>
-                            {row.auto ? `${row.auto.note} • ${formatHz(row.auto.frequency)}` : 'n/a'}
+                          <Text style={{ color: colors.textSecondary, width: 150, fontSize: 12 }}>
+                            {`${row.sample.note} • ${formatHz(row.sample.frequency)}`}
                           </Text>
-                          <Text style={{ color: colors.textSecondary, width: 120, fontSize: 12 }}>
-                            {row.studio ? `${row.studio.note} • ${formatHz(row.studio.frequency)}` : 'n/a'}
-                          </Text>
-                          <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>
-                            {deltaHz == null ? 'n/a' : formatHz(deltaHz)}
-                          </Text>
+                          <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>{formatHz(row.sample.frequency)}</Text>
                         </View>
                         {slotFinished && slotSummary ? (
-                          <>
-                            <View
-                              style={{
-                                flexDirection: 'row',
-                                paddingVertical: 6,
-                                backgroundColor: colors.surfaceInfo,
-                                borderBottomWidth: 1,
-                                borderBottomColor: colors.borderBlue,
-                              }}
-                            >
-                              <Text style={{ color: colors.accent, width: 86, fontSize: 12, fontWeight: '700' }}>slot total</Text>
-                              <Text style={{ color: colors.accent, width: 64, fontSize: 12, fontWeight: '700' }}>{slotSummary.slotNr}</Text>
-                              <Text style={{ color: colors.textPrimary, width: 114, fontSize: 12 }}>
-                                median: {slotSummary.auto.medianNote ?? 'n/a'} • {formatHz(slotSummary.auto.medianHz)}
-                              </Text>
-                              <Text style={{ color: colors.textMuted, width: 120, fontSize: 12 }}>mode: {slotSummary.auto.modeNote ?? 'n/a'}</Text>
-                              <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>
-                                counts: {slotSummary.auto.noteCountsLabel}
-                              </Text>
-                            </View>
-                            <View
-                              style={{
-                                flexDirection: 'row',
-                                paddingVertical: 6,
-                                backgroundColor: colors.surfaceNeutral,
-                                borderBottomWidth: 1,
-                                borderBottomColor: colors.borderLight,
-                              }}
-                            >
-                              <Text style={{ color: colors.primaryStrong, width: 86, fontSize: 12, fontWeight: '700' }}>studio total</Text>
-                              <Text style={{ color: colors.primaryStrong, width: 64, fontSize: 12, fontWeight: '700' }}>{slotSummary.slotNr}</Text>
-                              <Text style={{ color: colors.textPrimary, width: 114, fontSize: 12 }}>
-                                median: {slotSummary.studio.medianNote ?? 'n/a'} • {formatHz(slotSummary.studio.medianHz)}
-                              </Text>
-                              <Text style={{ color: colors.textMuted, width: 120, fontSize: 12 }}>mode: {slotSummary.studio.modeNote ?? 'n/a'}</Text>
-                              <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>
-                                counts: {slotSummary.studio.noteCountsLabel}
-                              </Text>
-                            </View>
-                          </>
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              paddingVertical: 6,
+                              backgroundColor: colors.surfaceNeutral,
+                              borderBottomWidth: 1,
+                              borderBottomColor: colors.borderLight,
+                            }}
+                          >
+                            <Text style={{ color: colors.primaryStrong, width: 86, fontSize: 12, fontWeight: '700' }}>slot total</Text>
+                            <Text style={{ color: colors.primaryStrong, width: 64, fontSize: 12, fontWeight: '700' }}>{row.slotNr}</Text>
+                            <Text style={{ color: colors.textPrimary, width: 150, fontSize: 12 }}>
+                              median: {slotSummary.medianNote ?? 'n/a'} • {formatHz(slotSummary.medianHz)}
+                            </Text>
+                            <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>
+                              counts: {slotSummary.noteCountsLabel}
+                            </Text>
+                          </View>
                         ) : null}
                       </React.Fragment>
                     );
