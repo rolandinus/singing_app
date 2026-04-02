@@ -10,6 +10,19 @@ export function midiToScientific(midi: number): string {
   return `${note}${octave}`;
 }
 
+export function scientificToMidi(scientific: string): number | null {
+  const match = /^([A-G])([#b]?)(-?\d+)$/.exec(scientific.trim());
+  if (!match) return null;
+  const [, note, accidental, octaveText] = match;
+  const semitones: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const base = semitones[note];
+  if (base === undefined) return null;
+  const offset = accidental === '#' ? 1 : accidental === 'b' ? -1 : 0;
+  const octave = Number(octaveText);
+  if (!Number.isFinite(octave)) return null;
+  return (octave + 1) * 12 + base + offset;
+}
+
 export function noteLetter(scientific: string): string | null {
   const match = /^([A-G])/.exec(scientific);
   return match ? match[1] : null;

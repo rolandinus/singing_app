@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildMelodyTimingModel, SessionService } from '../core/services/session-service';
 import { DEFAULT_SETTINGS, SKILL_DEFINITIONS } from '../core/config/curriculum';
+import { midiToFrequency } from '../core/utils/pitch';
 
 function createMockStorage(options: {
   initialSettings?: typeof DEFAULT_SETTINGS;
@@ -19,10 +20,6 @@ function createMockStorage(options: {
     async saveSession(session: any) { sessions.push(session); return session; },
     async getRecentSessions(limit = 20) { return sessions.slice(0, limit); },
   };
-}
-
-function midiToFrequency(midi: number): number {
-  return 440 * (2 ** ((midi - 69) / 12));
 }
 
 describe('SessionService', () => {

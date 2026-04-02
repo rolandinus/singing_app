@@ -1,14 +1,11 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import { buildMetronomeClickWavDataUri, buildSynthToneWavDataUri } from './synth-tone';
+import { scientificToMidi } from '../../core/utils/note-helpers';
+import { midiToFrequency } from '../../core/utils/pitch';
 
 function noteToFrequency(note: string): number {
-  const match = /^([A-G])(#?)(-?\d+)$/.exec(String(note).trim());
-  if (!match) return 440 * 2 ** ((60 - 69) / 12);
-  const [, letter, sharp, octaveRaw] = match;
-  const offsets: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
-  const semitone = (offsets[letter] ?? 0) + (sharp ? 1 : 0);
-  const midi = (Number(octaveRaw) + 1) * 12 + semitone;
-  return 440 * 2 ** ((midi - 69) / 12);
+  const midi = scientificToMidi(note);
+  return midiToFrequency(midi ?? 60);
 }
 
 async function waitForPlayerCompletion(
