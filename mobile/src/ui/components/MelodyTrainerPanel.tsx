@@ -2,7 +2,7 @@ import React from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Path, Text as SvgText } from 'react-native-svg';
 import { STAFF_MARGIN_LEFT, STAFF_MARGIN_TOP, LINE_SPACING, SVG_STAFF_HEIGHT, SVG_STAFF_WIDTH } from '../../core/config/constants';
-import { COUNT_IN_BEATS } from '../../core/services/session-service';
+import { COUNT_IN_BEATS, getMelodyNoteObjects, noteBeats } from '../../core/services/session-service';
 import type { MelodyNoteResult } from '../../core/services/session-service';
 import { t, type TranslationKey } from '../../core/i18n/translator';
 import type { Clef, Exercise, MelodyNote, NoteType } from '../../core/types';
@@ -32,23 +32,6 @@ function renderNode(node: SvgDescriptor, key: string): React.ReactNode {
   return <Component key={key} {...node.props}>{children}</Component>;
 }
 
-/** Read MelodyNote array safely from a melody exercise prompt. */
-function getMelodyNoteObjects(exercise: Exercise): MelodyNote[] {
-  if (exercise.skillKey !== 'sing_melody') return [];
-  const notes = (exercise.prompt as Record<string, unknown>).notes;
-  if (!Array.isArray(notes)) return [];
-  return (notes as unknown[]).map((n) => {
-    if (n && typeof n === 'object' && 'pitch' in n && 'duration' in n) {
-      return n as MelodyNote;
-    }
-    // Backwards compatibility: bare string treated as a quarter note.
-    return { pitch: String(n), duration: 'quarter' as NoteType };
-  });
-}
-
-function noteBeats(duration: NoteType): number {
-  return duration === 'half' ? 2 : 1;
-}
 
 /** Staff with per-note tap-to-audition support and optional correctness overlay. */
 function TappableStaff({

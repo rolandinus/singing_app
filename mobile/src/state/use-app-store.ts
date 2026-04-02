@@ -26,7 +26,7 @@ function pitchDebugIndicatesNoPitch(debug: PitchDebugState): boolean {
   return debug.phase === 'analysis_complete' && debug.timelinePoints === 0;
 }
 
-type PitchDebugState = {
+export type PitchDebugState = {
   phase: PitchCaptureDebugSnapshot['phase'];
   timestampMs: number | null;
   durationMillis: number;
@@ -38,7 +38,7 @@ type PitchDebugState = {
   message: string;
 };
 
-const INITIAL_PITCH_DEBUG_STATE: PitchDebugState = {
+export const INITIAL_PITCH_DEBUG_STATE: PitchDebugState = {
   phase: 'idle',
   timestampMs: null,
   durationMillis: 0,
@@ -62,7 +62,7 @@ function totalMelodyBeats(exercise: Exercise | null): number {
   return Math.max(1, beats);
 }
 
-function mergePitchDebugState(previous: PitchDebugState, snapshot: PitchCaptureDebugSnapshot): PitchDebugState {
+export function mergePitchDebugState(previous: PitchDebugState, snapshot: PitchCaptureDebugSnapshot): PitchDebugState {
   const next: PitchDebugState = {
     ...previous,
     phase: snapshot.phase,

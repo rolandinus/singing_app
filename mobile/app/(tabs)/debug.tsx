@@ -6,7 +6,7 @@ import { ExpoAudioPromptPort } from '../../src/adapters/audio/expo-audio-prompt-
 import { ExpoPitchCapturePort, type PitchCaptureDebugSnapshot } from '../../src/adapters/pitch/expo-pitch-capture-port';
 import { AsyncStoragePort } from '../../src/adapters/storage/async-storage-port';
 import { DEFAULT_MELODY_OPTIONS } from '../../src/core/domain/exercise-generator';
-import { t } from '../../src/core/i18n/translator';
+import { t, type TranslationKey } from '../../src/core/i18n/translator';
 import {
   buildMelodyTimingModel,
   SessionService,
@@ -15,7 +15,7 @@ import {
 import type { Clef, Exercise, MelodyNote, NoteType } from '../../src/core/types';
 import { midiToScientific } from '../../src/core/utils/note-helpers';
 import { noteFromPitch } from '../../src/core/utils/pitch';
-import { useAppStore } from '../../src/state/use-app-store';
+import { useAppStore, type PitchDebugState, INITIAL_PITCH_DEBUG_STATE, mergePitchDebugState } from '../../src/state/use-app-store';
 import { Card } from '../../src/ui/components/Card';
 import { MelodyTrainerPanel } from '../../src/ui/components/MelodyTrainerPanel';
 import { Screen } from '../../src/ui/components/Screen';
@@ -57,30 +57,7 @@ type RecordedTake = {
   timestampMs: number | null;
 };
 
-type PitchDebugState = {
-  phase: PitchCaptureDebugSnapshot['phase'];
-  timestampMs: number | null;
-  durationMillis: number;
-  metering: number | null;
-  frequency: number | null;
-  sampleTimeMs: number | null;
-  timelinePoints: number;
-  uri: string | null;
-  message: string;
-};
-
 const MAX_PITCH_DEBUG_EVENTS = 2500;
-const INITIAL_PITCH_DEBUG_STATE: PitchDebugState = {
-  phase: 'idle',
-  timestampMs: null,
-  durationMillis: 0,
-  metering: null,
-  frequency: null,
-  sampleTimeMs: null,
-  timelinePoints: 0,
-  uri: null,
-  message: '',
-};
 
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
@@ -88,23 +65,6 @@ function median(values: number[]): number | null {
   return sorted[Math.floor(sorted.length / 2)] ?? null;
 }
 
-function mergePitchDebugState(previous: PitchDebugState, snapshot: PitchCaptureDebugSnapshot): PitchDebugState {
-  const next: PitchDebugState = {
-    ...previous,
-    phase: snapshot.phase,
-    timestampMs: snapshot.timestampMs,
-  };
-
-  if (snapshot.durationMillis !== undefined) next.durationMillis = snapshot.durationMillis;
-  if (snapshot.metering !== undefined) next.metering = snapshot.metering;
-  if (snapshot.frequency !== undefined) next.frequency = snapshot.frequency;
-  if (snapshot.sampleTimeMs !== undefined) next.sampleTimeMs = snapshot.sampleTimeMs;
-  if (snapshot.timelinePoints !== undefined) next.timelinePoints = snapshot.timelinePoints;
-  if (snapshot.uri !== undefined) next.uri = snapshot.uri;
-  if (snapshot.message !== undefined) next.message = snapshot.message;
-
-  return next;
-}
 
 function toNoteName(frequency: number): string {
   if (!Number.isFinite(frequency) || frequency <= 0) return 'n/a';
@@ -459,6 +419,80 @@ function SummaryBlock({
   );
 }
 
+type PitchSamplesTableProps = {
+  rows: SingleDetectorRow[];
+  slotSummaryByNr: Map<number, SlotDetectorSummary>;
+  activeReplaySlotNr: number | null;
+  keyPrefix: string;
+  col3Header: TranslationKey;
+  col4Header: TranslationKey;
+  renderCol4: (row: SingleDetectorRow) => string;
+  locale: 'de' | 'en';
+};
+
+function PitchSamplesTable({ rows, slotSummaryByNr, activeReplaySlotNr, keyPrefix, col3Header, col4Header, renderCol4, locale }: PitchSamplesTableProps) {
+  const colors = useThemeColors();
+  return (
+    <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false}>
+      <View style={{ minWidth: 520 }}>
+        <View style={{ flexDirection: 'row', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
+          <Text style={{ color: colors.textMuted, fontWeight: '600', width: 86 }}>{t(locale, 'debug_pitch_time_ms')}</Text>
+          <Text style={{ color: colors.textMuted, fontWeight: '600', width: 64 }}>{t(locale, 'debug_compare_slot_nr')}</Text>
+          <Text style={{ color: colors.textMuted, fontWeight: '600', width: 150 }}>{t(locale, col3Header)}</Text>
+          <Text style={{ color: colors.textMuted, fontWeight: '600', flex: 1 }}>{t(locale, col4Header)}</Text>
+        </View>
+        <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled>
+          {rows.map((row, index) => {
+            const nextRow = rows[index + 1] ?? null;
+            const slotFinished = row.slotNr != null && nextRow?.slotNr !== row.slotNr;
+            const slotSummary = row.slotNr != null ? slotSummaryByNr.get(row.slotNr) ?? null : null;
+            return (
+              <React.Fragment key={`${keyPrefix}${row.timeMs}-${index}`}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    paddingVertical: 5,
+                    borderBottomWidth: 1,
+                    borderBottomColor: activeReplaySlotNr != null && row.slotNr === activeReplaySlotNr ? colors.borderBlue : colors.border,
+                    backgroundColor: activeReplaySlotNr != null && row.slotNr === activeReplaySlotNr ? colors.surfaceInfo : 'transparent',
+                  }}
+                >
+                  <Text style={{ color: colors.textSecondary, width: 86, fontSize: 12 }}>{formatMs(row.timeMs)}</Text>
+                  <Text style={{ color: colors.textSecondary, width: 64, fontSize: 12 }}>{row.slotNr ?? 'n/a'}</Text>
+                  <Text style={{ color: colors.textSecondary, width: 150, fontSize: 12 }}>
+                    {`${row.sample.note} • ${formatHz(row.sample.frequency)}`}
+                  </Text>
+                  <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>{renderCol4(row)}</Text>
+                </View>
+                {slotFinished && slotSummary ? (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      paddingVertical: 6,
+                      backgroundColor: colors.surfaceNeutral,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.borderLight,
+                    }}
+                  >
+                    <Text style={{ color: colors.primaryStrong, width: 86, fontSize: 12, fontWeight: '700' }}>slot total</Text>
+                    <Text style={{ color: colors.primaryStrong, width: 64, fontSize: 12, fontWeight: '700' }}>{row.slotNr}</Text>
+                    <Text style={{ color: colors.textPrimary, width: 150, fontSize: 12 }}>
+                      median: {slotSummary.medianNote ?? 'n/a'} • {formatHz(slotSummary.medianHz)}
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>
+                      counts: {slotSummary.noteCountsLabel}
+                    </Text>
+                  </View>
+                ) : null}
+              </React.Fragment>
+            );
+          })}
+        </ScrollView>
+      </View>
+    </ScrollView>
+  );
+}
+
 export default function DebugScreen() {
   const colors = useThemeColors();
   const settings = useAppStore((s) => s.settings);
@@ -588,7 +622,7 @@ export default function DebugScreen() {
     }
   }, [enabledClefs, melodyClef, settings.defaultClef]);
 
-  React.useEffect(() => {
+  const initMelodyExercise = React.useCallback(() => {
     if (!serviceReady) return;
     setMelodyExercise(service.createMelodyExercise({
       clef: melodyClef,
@@ -601,6 +635,10 @@ export default function DebugScreen() {
     setMelodyRecordingProgress(null);
     setSingingNoteIndex(null);
   }, [melodyClef, melodyLevel, service, serviceReady]);
+
+  React.useEffect(() => {
+    initMelodyExercise();
+  }, [initMelodyExercise]);
 
   const clearPitchDebugEvents = React.useCallback(() => {
     setEvents([]);
@@ -640,18 +678,8 @@ export default function DebugScreen() {
   }, [loadingCapture, loadingPlay, melodyBpm, melodyExercise, service]);
 
   const regenerateMelody = React.useCallback(() => {
-    if (!serviceReady) return;
-    setMelodyExercise(service.createMelodyExercise({
-      clef: melodyClef,
-      level: melodyLevel,
-      melodyOptions: DEFAULT_MELODY_OPTIONS,
-    }));
-    setMelodyFeedback({ text: '', isCorrect: false });
-    setMelodyNoteResults([]);
-    setMelodyCountInBeat(null);
-    setMelodyRecordingProgress(null);
-    setSingingNoteIndex(null);
-  }, [melodyClef, melodyLevel, service, serviceReady]);
+    initMelodyExercise();
+  }, [initMelodyExercise]);
 
   const auditMelodyNote = React.useCallback(async (note: string) => {
     await service.auditNote(note);
@@ -1141,73 +1169,16 @@ export default function DebugScreen() {
               <View style={{ gap: 8 }}>
                 <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{t(locale, 'debug_wav_analysis_title')}</Text>
                 <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t(locale, 'debug_wav_analysis_hint')}</Text>
-
-                <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false}>
-                  <View style={{ minWidth: 520 }}>
-                    <View
-                      style={{
-                        flexDirection: 'row',
-                        paddingVertical: 6,
-                        borderBottomWidth: 1,
-                        borderBottomColor: colors.borderLight,
-                      }}
-                    >
-                      <Text style={{ color: colors.textMuted, fontWeight: '600', width: 86 }}>{t(locale, 'debug_pitch_time_ms')}</Text>
-                      <Text style={{ color: colors.textMuted, fontWeight: '600', width: 64 }}>{t(locale, 'debug_compare_slot_nr')}</Text>
-                      <Text style={{ color: colors.textMuted, fontWeight: '600', width: 150 }}>{t(locale, 'debug_wav_analysis_detector')}</Text>
-                      <Text style={{ color: colors.textMuted, fontWeight: '600', flex: 1 }}>{t(locale, 'debug_melody_target')}</Text>
-                    </View>
-
-                    <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled>
-                      {wavRows.map((row, index) => {
-                        const nextRow = wavRows[index + 1] ?? null;
-                        const slotFinished = row.slotNr != null && nextRow?.slotNr !== row.slotNr;
-                        const slotSummary = row.slotNr != null ? wavSlotSummaryByNr.get(row.slotNr) ?? null : null;
-                        const target = row.slotNr != null ? melodyNotes[row.slotNr - 1]?.pitch ?? null : null;
-                        return (
-                          <React.Fragment key={`wav-${row.timeMs}-${index}`}>
-                            <View
-                              style={{
-                                flexDirection: 'row',
-                                paddingVertical: 5,
-                                borderBottomWidth: 1,
-                                borderBottomColor: activeReplaySlotNr != null && row.slotNr === activeReplaySlotNr ? colors.borderBlue : colors.border,
-                                backgroundColor: activeReplaySlotNr != null && row.slotNr === activeReplaySlotNr ? colors.surfaceInfo : 'transparent',
-                              }}
-                            >
-                              <Text style={{ color: colors.textSecondary, width: 86, fontSize: 12 }}>{formatMs(row.timeMs)}</Text>
-                              <Text style={{ color: colors.textSecondary, width: 64, fontSize: 12 }}>{row.slotNr ?? 'n/a'}</Text>
-                              <Text style={{ color: colors.textSecondary, width: 150, fontSize: 12 }}>
-                                {`${row.sample.note} • ${formatHz(row.sample.frequency)}`}
-                              </Text>
-                              <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>{target ?? 'n/a'}</Text>
-                            </View>
-                            {slotFinished && slotSummary ? (
-                              <View
-                                style={{
-                                  flexDirection: 'row',
-                                  paddingVertical: 6,
-                                  backgroundColor: colors.surfaceNeutral,
-                                  borderBottomWidth: 1,
-                                  borderBottomColor: colors.borderLight,
-                                }}
-                              >
-                                <Text style={{ color: colors.primaryStrong, width: 86, fontSize: 12, fontWeight: '700' }}>slot total</Text>
-                                <Text style={{ color: colors.primaryStrong, width: 64, fontSize: 12, fontWeight: '700' }}>{row.slotNr}</Text>
-                                <Text style={{ color: colors.textPrimary, width: 150, fontSize: 12 }}>
-                                  median: {slotSummary.medianNote ?? 'n/a'} • {formatHz(slotSummary.medianHz)}
-                                </Text>
-                                <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>
-                                  counts: {slotSummary.noteCountsLabel}
-                                </Text>
-                              </View>
-                            ) : null}
-                          </React.Fragment>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                </ScrollView>
+                <PitchSamplesTable
+                  rows={wavRows}
+                  slotSummaryByNr={wavSlotSummaryByNr}
+                  activeReplaySlotNr={activeReplaySlotNr}
+                  keyPrefix="wav-"
+                  col3Header="debug_wav_analysis_detector"
+                  col4Header="debug_melody_target"
+                  renderCol4={(row) => (row.slotNr != null ? melodyNotes[row.slotNr - 1]?.pitch ?? 'n/a' : 'n/a')}
+                  locale={locale}
+                />
               </View>
             ) : null}
           </>
@@ -1249,70 +1220,16 @@ export default function DebugScreen() {
 
             <Text style={{ color: colors.textPrimary, fontWeight: '700', marginTop: 8 }}>{t(locale, 'debug_compare_samples_title')}</Text>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>{t(locale, 'debug_compare_samples_hint')}</Text>
-            <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false}>
-              <View style={{ minWidth: 520 }}>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    paddingVertical: 6,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.borderLight,
-                  }}
-                >
-                  <Text style={{ color: colors.textMuted, fontWeight: '600', width: 86 }}>{t(locale, 'debug_pitch_time_ms')}</Text>
-                  <Text style={{ color: colors.textMuted, fontWeight: '600', width: 64 }}>{t(locale, 'debug_compare_slot_nr')}</Text>
-                  <Text style={{ color: colors.textMuted, fontWeight: '600', width: 150 }}>{t(locale, 'debug_compare_experimental')}</Text>
-                  <Text style={{ color: colors.textMuted, fontWeight: '600', flex: 1 }}>{t(locale, 'debug_pitch_frequency')}</Text>
-                </View>
-                <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled>
-                  {liveRows.map((row, index) => {
-                    const nextRow = liveRows[index + 1] ?? null;
-                    const slotFinished = row.slotNr != null && nextRow?.slotNr !== row.slotNr;
-                    const slotSummary = row.slotNr != null ? liveSlotSummaryByNr.get(row.slotNr) ?? null : null;
-                    return (
-                      <React.Fragment key={`${row.timeMs}-${index}`}>
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            paddingVertical: 5,
-                            borderBottomWidth: 1,
-                            borderBottomColor: activeReplaySlotNr != null && row.slotNr === activeReplaySlotNr ? colors.borderBlue : colors.border,
-                            backgroundColor: activeReplaySlotNr != null && row.slotNr === activeReplaySlotNr ? colors.surfaceInfo : 'transparent',
-                          }}
-                        >
-                          <Text style={{ color: colors.textSecondary, width: 86, fontSize: 12 }}>{formatMs(row.timeMs)}</Text>
-                          <Text style={{ color: colors.textSecondary, width: 64, fontSize: 12 }}>{row.slotNr ?? 'n/a'}</Text>
-                          <Text style={{ color: colors.textSecondary, width: 150, fontSize: 12 }}>
-                            {`${row.sample.note} • ${formatHz(row.sample.frequency)}`}
-                          </Text>
-                          <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>{formatHz(row.sample.frequency)}</Text>
-                        </View>
-                        {slotFinished && slotSummary ? (
-                          <View
-                            style={{
-                              flexDirection: 'row',
-                              paddingVertical: 6,
-                              backgroundColor: colors.surfaceNeutral,
-                              borderBottomWidth: 1,
-                              borderBottomColor: colors.borderLight,
-                            }}
-                          >
-                            <Text style={{ color: colors.primaryStrong, width: 86, fontSize: 12, fontWeight: '700' }}>slot total</Text>
-                            <Text style={{ color: colors.primaryStrong, width: 64, fontSize: 12, fontWeight: '700' }}>{row.slotNr}</Text>
-                            <Text style={{ color: colors.textPrimary, width: 150, fontSize: 12 }}>
-                              median: {slotSummary.medianNote ?? 'n/a'} • {formatHz(slotSummary.medianHz)}
-                            </Text>
-                            <Text style={{ color: colors.textSecondary, flex: 1, fontSize: 12 }}>
-                              counts: {slotSummary.noteCountsLabel}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </React.Fragment>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            </ScrollView>
+            <PitchSamplesTable
+              rows={liveRows}
+              slotSummaryByNr={liveSlotSummaryByNr}
+              activeReplaySlotNr={activeReplaySlotNr}
+              keyPrefix=""
+              col3Header="debug_compare_experimental"
+              col4Header="debug_pitch_frequency"
+              renderCol4={(row) => formatHz(row.sample.frequency)}
+              locale={locale}
+            />
           </>
         )}
       </Card>

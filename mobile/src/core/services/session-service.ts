@@ -24,7 +24,7 @@ function createSessionId(): string {
 }
 
 /** Parse MelodyNote array from a sing_melody exercise prompt (backwards-compatible). */
-function getMelodyNoteObjects(exercise: Exercise): MelodyNote[] {
+export function getMelodyNoteObjects(exercise: Exercise): MelodyNote[] {
   if (exercise.skillKey !== 'sing_melody') return [];
   const notes = (exercise.prompt as Record<string, unknown>).notes;
   if (!Array.isArray(notes)) return [];
@@ -37,7 +37,7 @@ function getMelodyNoteObjects(exercise: Exercise): MelodyNote[] {
 }
 
 /** Returns the number of quarter-note beats a single note occupies. */
-function noteBeats(duration: NoteType): number {
+export function noteBeats(duration: NoteType): number {
   return duration === 'half' ? 2 : 1;
 }
 
