@@ -2,12 +2,10 @@ import React from 'react';
 import Svg, { Circle, Ellipse, G, Line, Path, Text as SvgText } from 'react-native-svg';
 import {
   LINE_SPACING,
-  STAFF_MARGIN_LEFT,
-  STAFF_MARGIN_TOP,
   SVG_STAFF_HEIGHT,
   SVG_STAFF_WIDTH,
 } from '../../core/config/constants';
-import { buildNoteNodes, buildStaffNodes } from '../../core/render/staff-builder';
+import { buildNoteNodes, buildStaffNodes, xForSlot, yForScientific } from '../../core/render/staff-builder';
 import { toReactNativeSvgTree, type SvgDescriptor } from '../../core/render/rn-svg-renderer';
 import { useThemeColors } from '../hooks/use-theme-colors';
 
@@ -29,30 +27,6 @@ function renderNode(node: SvgDescriptor, key: string): React.ReactNode {
   return <Component key={key} {...node.props}>{children}</Component>;
 }
 
-function yForScientific(scientific: string, clef: 'treble' | 'bass'): number {
-  const anchor = clef === 'bass' ? 'D3' : 'B4';
-  const order = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-
-  const parse = (value: string) => {
-    const match = /^([A-G])[#b]?(\d)$/.exec(value);
-    if (!match) return null;
-    return Number(match[2]) * 7 + order.indexOf(match[1]);
-  };
-
-  const anchorValue = parse(anchor);
-  const noteValue = parse(scientific);
-  if (anchorValue === null || noteValue === null) return STAFF_MARGIN_TOP + 2 * LINE_SPACING;
-
-  const middleLineY = STAFF_MARGIN_TOP + 2 * LINE_SPACING;
-  return middleLineY - (noteValue - anchorValue) * (LINE_SPACING / 2);
-}
-
-function xForSlot(slotIndex: number, layoutNoteCount: number): number {
-  const startX = STAFF_MARGIN_LEFT + 110;
-  const availableWidth = SVG_STAFF_WIDTH - startX - STAFF_MARGIN_LEFT;
-  const step = layoutNoteCount > 1 ? Math.min(availableWidth / (layoutNoteCount - 1), 180) : 0;
-  return startX + slotIndex * step;
-}
 
 export function StaffSvg({
   clef = 'treble',
@@ -79,7 +53,7 @@ export function StaffSvg({
     clef,
     highlightIndex ?? null,
     undefined,
-    singleNoteLayout && notes.length === 1 ? { noteStyles: [{ rx: 10, ry: 8 }] } : undefined,
+    singleNoteLayout && notes.length === 1 ? { noteStyles: [{ rx: LINE_SPACING * (2 / 3), ry: LINE_SPACING * (8 / 15) }] } : undefined,
     noteColor,
   );
   const overlayLayoutCount = overlayIndex != null ? Math.max(notes.length, overlayIndex + 1) : notes.length;
@@ -95,8 +69,8 @@ export function StaffSvg({
         noteStyles: [{
           fill: '#dc2626',
           stroke: '#dc2626',
-          rx: singleNoteLayout ? 10 : 8,
-          ry: singleNoteLayout ? 8 : 6,
+          rx: singleNoteLayout ? LINE_SPACING * (2 / 3) : LINE_SPACING * (8 / 15),
+          ry: singleNoteLayout ? LINE_SPACING * (8 / 15) : LINE_SPACING * 0.4,
         }],
       },
       noteColor,
@@ -107,7 +81,7 @@ export function StaffSvg({
   const showArrow = overlayNote && overlayIndex != null && overlayDirection != null;
 
   return (
-    <Svg width="100%" height={singleNoteLayout ? 132 : 160} viewBox={`0 0 ${SVG_STAFF_WIDTH} ${SVG_STAFF_HEIGHT}`}>
+    <Svg width="100%" height={singleNoteLayout ? LINE_SPACING * 8.8 : LINE_SPACING * (160 / 15)} viewBox={`0 0 ${SVG_STAFF_WIDTH} ${SVG_STAFF_HEIGHT}`}>
       {tree.map((node, index) => renderNode(node, String(index)))}
       {showArrow ? (
         <SvgText

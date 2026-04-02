@@ -6,7 +6,7 @@ import { COUNT_IN_BEATS, getMelodyNoteObjects, noteBeats } from '../../core/serv
 import type { MelodyNoteResult } from '../../core/services/session-service';
 import { t, type TranslationKey } from '../../core/i18n/translator';
 import type { Clef, Exercise, MelodyNote, NoteType } from '../../core/types';
-import { buildNoteNodes, buildStaffNodes } from '../../core/render/staff-builder';
+import { buildNoteNodes, buildStaffNodes, yForScientific } from '../../core/render/staff-builder';
 import { buildMelodyResultRenderNotes } from '../../core/utils/melody-result-notes';
 import { toReactNativeSvgTree, type SvgDescriptor } from '../../core/render/rn-svg-renderer';
 import { useThemeColors } from '../hooks/use-theme-colors';
@@ -39,11 +39,11 @@ function TappableStaff({
   notes,
   durations,
   highlightIndex,
-  overlayNote,
+  correctionDirection,
   overlayIndex,
-  overlayDuration,
   noteResults,
   renderedNotes,
+  incorrectOverlays,
   onTapNote,
   recordingProgress,
   noteColor,
@@ -52,11 +52,11 @@ function TappableStaff({
   notes: string[];
   durations?: NoteType[];
   highlightIndex?: number | null;
-  overlayNote?: string | null;
+  correctionDirection?: 'up' | 'down' | null;
   overlayIndex?: number | null;
-  overlayDuration?: NoteType;
   noteResults?: MelodyNoteResult[];
-  renderedNotes?: Array<{ note: string; duration: NoteType; slotIndex: number; correct: boolean }>;
+  renderedNotes?: Array<{ note: string; duration: NoteType; slotIndex: number; correct: boolean; isOctaveOff: boolean }>;
+  incorrectOverlays?: Array<{ note: string; duration: NoteType; slotIndex: number; isOctaveOff: boolean }>;
   onTapNote?: (note: string, index: number) => void;
   recordingProgress?: number | null;
   noteColor?: string;
@@ -97,30 +97,33 @@ function TappableStaff({
       layoutNoteCount: totalBeatSlots,
       slotIndices,
       noteStyles: renderedNotes
-        ? renderedPitchNotes.map((note) => ({
-          fill: note.correct ? '#047857' : '#dc2626',
-          stroke: note.correct ? '#047857' : '#dc2626',
-        }))
+        ? renderedPitchNotes.map((note) => {
+          const color = note.correct ? '#047857' : note.isOctaveOff ? '#f97316' : '#dc2626';
+          return { fill: color, stroke: color };
+        })
         : undefined,
     },
     noteColor,
   );
-  const overlayNodes = overlayNote && overlayIndex != null
+  const incorrectOverlayNodes = incorrectOverlays?.length
     ? buildNoteNodes(
-      [overlayNote],
+      incorrectOverlays.map((o) => o.note),
       clef,
       null,
-      [overlayDuration ?? 'quarter'],
+      incorrectOverlays.map((o) => o.duration),
       {
         layoutNoteCount: totalBeatSlots,
-        slotIndices: [slotIndices[overlayIndex] ?? overlayIndex],
-        noteStyles: [{ fill: '#dc2626', stroke: '#dc2626', rx: 8, ry: 6 }],
+        slotIndices: incorrectOverlays.map((o) => beatOffsetByNoteIndex[o.slotIndex] ?? o.slotIndex),
+        noteStyles: incorrectOverlays.map((o) => {
+          const c = o.isOctaveOff ? '#f97316' : '#dc2626';
+          return { fill: c, stroke: c, rx: 8, ry: 6 };
+        }),
       },
       noteColor,
     )
     : [];
   const staffNodes = buildStaffNodes(clef, noteColor);
-  const tree = toReactNativeSvgTree([...staffNodes, ...noteNodes, ...overlayNodes]);
+  const tree = toReactNativeSvgTree([...staffNodes, ...noteNodes, ...incorrectOverlayNodes]);
 
   const NOTE_START_X = STAFF_MARGIN_LEFT + 110;
   const availableWidth = SVG_STAFF_WIDTH - NOTE_START_X - STAFF_MARGIN_LEFT;
@@ -154,10 +157,34 @@ function TappableStaff({
         {/* Correctness indicators above staff notes */}
         {noteResults && noteResults.map((result, i) => {
           const cx = NOTE_START_X + (slotIndices[i] ?? i) * NOTE_SPACING;
-          const color = result.correct ? '#10b981' : '#f43f5e';
+          const color = result.correct ? '#10b981' : result.isOctaveOff ? '#f97316' : '#f43f5e';
           return <Circle key={`result-${i}`} cx={cx} cy={8} r={5} fill={color} />;
         })}
       </Svg>
+
+      {/* Directional arrow overlaid at target note position during capture */}
+      {correctionDirection != null && overlayIndex != null && notes[overlayIndex] ? (() => {
+        const SVG_HEIGHT_PX = 160;
+        const scale = SVG_HEIGHT_PX / SVG_STAFF_HEIGHT;
+        const noteX = NOTE_START_X + (slotIndices[overlayIndex] ?? overlayIndex) * NOTE_SPACING;
+        const noteY = yForScientific(notes[overlayIndex], clef);
+        const arrowY = correctionDirection === 'up' ? noteY + 18 : noteY - 30;
+        return (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: arrowY * scale,
+              left: `${(noteX / SVG_STAFF_WIDTH) * 100}%` as any,
+              transform: [{ translateX: -10 }],
+            }}
+          >
+            <Text style={{ color: '#dc2626', fontSize: 20, fontWeight: '700', lineHeight: 24 }}>
+              {correctionDirection === 'up' ? '↑' : '↓'}
+            </Text>
+          </View>
+        );
+      })() : null}
 
       {/* Invisible tap targets overlaid on each note */}
       {onTapNote && notes.map((note, i) => {
@@ -258,8 +285,10 @@ type Props = {
   noteResults: MelodyNoteResult[];
   recordingProgress: number | null;
   singingNoteIndex: number | null;
-  liveDetectedNote?: string | null;
+  correctionDirection?: 'up' | 'down' | null;
   liveDetectedNoteIndex?: number | null;
+  liveOctaveWarning?: 'high' | 'low' | null;
+  liveIsOnTarget?: boolean;
   feedback: { text: string; isCorrect: boolean };
   loadingPlay: boolean;
   loadingCapture: boolean;
@@ -280,8 +309,10 @@ export function MelodyTrainerPanel({
   noteResults,
   recordingProgress,
   singingNoteIndex,
-  liveDetectedNote,
+  correctionDirection,
   liveDetectedNoteIndex,
+  liveOctaveWarning,
+  liveIsOnTarget,
   feedback,
   loadingPlay,
   loadingCapture,
@@ -301,6 +332,19 @@ export function MelodyTrainerPanel({
   const hasResult = noteResults.length > 0;
   const renderedResultNotes = buildMelodyResultRenderNotes(noteResults, durations);
 
+  const [latchedOctaveWarning, setLatchedOctaveWarning] = React.useState<'high' | 'low' | null>(null);
+  React.useEffect(() => {
+    if (!isCapturing) {
+      setLatchedOctaveWarning(null);
+      return;
+    }
+    if (liveOctaveWarning) {
+      setLatchedOctaveWarning(liveOctaveWarning);
+    } else if (liveIsOnTarget) {
+      setLatchedOctaveWarning(null);
+    }
+  }, [isCapturing, liveOctaveWarning, liveIsOnTarget]);
+
   return (
     <View style={{ gap: 10 }}>
       <Text style={{ fontSize: 15, fontWeight: '700', color: colors.accent }}>{t(locale, 'melody_trainer_title')}</Text>
@@ -318,10 +362,11 @@ export function MelodyTrainerPanel({
         notes={notes}
         durations={durations}
         highlightIndex={isCapturing && countInBeat === null ? singingNoteIndex : null}
-        overlayNote={liveDetectedNote}
+        correctionDirection={isCapturing ? correctionDirection : null}
         overlayIndex={liveDetectedNoteIndex}
-        overlayDuration={liveDetectedNoteIndex != null ? (durations[liveDetectedNoteIndex] ?? 'quarter') : 'quarter'}
         recordingProgress={isCapturing && countInBeat === null ? recordingProgress : null}
+        noteResults={hasResult ? noteResults : undefined}
+        incorrectOverlays={hasResult ? renderedResultNotes.filter((n) => !n.correct) : undefined}
         onTapNote={!isCapturing ? onTapNote : undefined}
         noteColor={colors.textPrimary}
       />
@@ -329,36 +374,34 @@ export function MelodyTrainerPanel({
       {/* Count-in indicator */}
       <CountInIndicator beat={countInBeat} total={COUNT_IN_BEATS} locale={locale} />
 
-      {/* Per-note result staff (shown after attempt) */}
+      {/* Live octave warning */}
+      {isCapturing && latchedOctaveWarning ? (
+        <View style={{ borderRadius: 8, backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#f59e0b', paddingHorizontal: 10, paddingVertical: 6 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: '#92400e' }}>
+            {t(locale, latchedOctaveWarning === 'high' ? 'melody_octave_too_high' : 'melody_octave_too_low')}
+          </Text>
+        </View>
+      ) : null}
+
+      {/* Per-note score badges (shown after attempt) */}
       {hasResult ? (
-        <>
-          <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: '600', marginTop: 4 }}>{t(locale, 'melody_result_staff')}</Text>
-          <TappableStaff
-            clef={exercise.clef}
-            notes={notes}
-            durations={durations}
-            noteResults={noteResults}
-            renderedNotes={renderedResultNotes}
-            noteColor={colors.textPrimary}
-          />
-          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-            {noteResults.map((result, i) => (
-              <View
-                key={i}
-                style={{
-                  borderRadius: 6,
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  minWidth: 36,
-                  alignItems: 'center',
-                  backgroundColor: result.correct ? colors.noteResultOkBg : colors.noteResultBadBg,
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textPrimary }}>{Math.round(result.score * 100)}%</Text>
-              </View>
-            ))}
-          </View>
-        </>
+        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+          {noteResults.map((result, i) => (
+            <View
+              key={i}
+              style={{
+                borderRadius: 6,
+                paddingHorizontal: 6,
+                paddingVertical: 2,
+                minWidth: 36,
+                alignItems: 'center',
+                backgroundColor: result.correct ? colors.noteResultOkBg : result.isOctaveOff ? '#ffedd5' : colors.noteResultBadBg,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textPrimary }}>{Math.round(result.score * 100)}%</Text>
+            </View>
+          ))}
+        </View>
       ) : null}
 
       {/* Feedback text */}

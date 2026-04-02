@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { DEFAULT_SETTINGS, SKILL_DEFINITIONS } from '../core/config/curriculum';
 import { DEFAULT_MELODY_OPTIONS } from '../core/domain/exercise-generator';
@@ -161,6 +162,30 @@ type StoreState = {
   clearSummary: () => void;
 };
 
+const CUSTOM_SELECTION_KEY = 'ss_mobile_custom_selection_v1';
+
+type PersistedCustomSelection = {
+  selectedFamily: ExerciseFamily;
+  selectedSkill: SkillKey;
+  selectedClef: Clef;
+  selectedLevel: number;
+  selectedCount: number;
+  selectedMelodyOptions: MelodyOptions;
+};
+
+async function loadCustomSelection(): Promise<Partial<PersistedCustomSelection>> {
+  try {
+    const raw = await AsyncStorage.getItem(CUSTOM_SELECTION_KEY);
+    return raw ? (JSON.parse(raw) as Partial<PersistedCustomSelection>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveCustomSelection(state: PersistedCustomSelection): void {
+  void AsyncStorage.setItem(CUSTOM_SELECTION_KEY, JSON.stringify(state));
+}
+
 function firstSkillForFamily(family: ExerciseFamily): SkillKey {
   return (SKILL_DEFINITIONS.find((s) => s.family === family)?.key ?? 'note_naming') as SkillKey;
 }
@@ -221,13 +246,24 @@ export const useAppStore = create<StoreState>((set, get) => ({
     await service.init();
     const settings = service.getSettings();
     const clefs = service.getClefChoices();
+    const saved = await loadCustomSelection();
+
+    const defaultClef = clefs.includes(settings.defaultClef) ? settings.defaultClef : clefs[0];
+
     set({
       bootstrapped: true,
       settings,
       melodyBpm: settings.bpm,
       recentSessions: service.getRecentSessions(),
       skillRows: service.buildSkillRows(),
-      selectedClef: clefs.includes(settings.defaultClef) ? settings.defaultClef : clefs[0],
+      selectedClef: saved.selectedClef && clefs.includes(saved.selectedClef) ? saved.selectedClef : defaultClef,
+      ...(saved.selectedFamily !== undefined && { selectedFamily: saved.selectedFamily }),
+      ...(saved.selectedSkill !== undefined && { selectedSkill: saved.selectedSkill }),
+      ...(saved.selectedLevel !== undefined && { selectedLevel: saved.selectedLevel }),
+      ...(saved.selectedCount !== undefined && { selectedCount: saved.selectedCount }),
+      ...(saved.selectedMelodyOptions !== undefined && {
+        selectedMelodyOptions: { ...DEFAULT_MELODY_OPTIONS, ...saved.selectedMelodyOptions },
+      }),
     });
   },
 
@@ -636,20 +672,38 @@ export const useAppStore = create<StoreState>((set, get) => ({
 
   setGuidedFamily(value) { set({ guidedFamily: value }); },
   setSelectedFamily(value) {
-    set({
-      selectedFamily: value,
-      selectedSkill: firstSkillForFamily(value),
-    });
+    const skill = firstSkillForFamily(value);
+    set({ selectedFamily: value, selectedSkill: skill });
+    const s = get();
+    saveCustomSelection({ selectedFamily: value, selectedSkill: skill, selectedClef: s.selectedClef, selectedLevel: s.selectedLevel, selectedCount: s.selectedCount, selectedMelodyOptions: s.selectedMelodyOptions });
   },
-  setSelectedSkill(value) { set({ selectedSkill: value }); },
-  setSelectedClef(value) { set({ selectedClef: value }); },
-  setSelectedLevel(value) { set({ selectedLevel: Math.max(1, Math.min(5, value)) }); },
+  setSelectedSkill(value) {
+    set({ selectedSkill: value });
+    const s = get();
+    saveCustomSelection({ selectedFamily: s.selectedFamily, selectedSkill: value, selectedClef: s.selectedClef, selectedLevel: s.selectedLevel, selectedCount: s.selectedCount, selectedMelodyOptions: s.selectedMelodyOptions });
+  },
+  setSelectedClef(value) {
+    set({ selectedClef: value });
+    const s = get();
+    saveCustomSelection({ selectedFamily: s.selectedFamily, selectedSkill: s.selectedSkill, selectedClef: value, selectedLevel: s.selectedLevel, selectedCount: s.selectedCount, selectedMelodyOptions: s.selectedMelodyOptions });
+  },
+  setSelectedLevel(value) {
+    const clamped = Math.max(1, Math.min(5, value));
+    set({ selectedLevel: clamped });
+    const s = get();
+    saveCustomSelection({ selectedFamily: s.selectedFamily, selectedSkill: s.selectedSkill, selectedClef: s.selectedClef, selectedLevel: clamped, selectedCount: s.selectedCount, selectedMelodyOptions: s.selectedMelodyOptions });
+  },
   setSelectedCount(value) {
     // 0 is the sentinel for unlimited; otherwise clamp to 1–50.
-    set({ selectedCount: value === 0 ? 0 : Math.max(1, Math.min(50, value)) });
+    const clamped = value === 0 ? 0 : Math.max(1, Math.min(50, value));
+    set({ selectedCount: clamped });
+    const s = get();
+    saveCustomSelection({ selectedFamily: s.selectedFamily, selectedSkill: s.selectedSkill, selectedClef: s.selectedClef, selectedLevel: s.selectedLevel, selectedCount: clamped, selectedMelodyOptions: s.selectedMelodyOptions });
   },
   setSelectedMelodyOptions(partial) {
     set((state) => ({ selectedMelodyOptions: { ...state.selectedMelodyOptions, ...partial } }));
+    const s = get();
+    saveCustomSelection({ selectedFamily: s.selectedFamily, selectedSkill: s.selectedSkill, selectedClef: s.selectedClef, selectedLevel: s.selectedLevel, selectedCount: s.selectedCount, selectedMelodyOptions: s.selectedMelodyOptions });
   },
   clearPitchDebugEvents() {
     set({

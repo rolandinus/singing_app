@@ -28,6 +28,7 @@ export function buildLiveSingingFeedback(input: {
   detectedNote: string | null;
   targetIndex: number | null;
   isOffTarget: boolean;
+  isOctaveOff: boolean;
   correctionDirection: 'up' | 'down' | null;
 } {
   const detectedNote = detectedScientificFromFrequency(input.frequency);
@@ -41,6 +42,7 @@ export function buildLiveSingingFeedback(input: {
   const detectedMidi = detectedNote ? scientificToMidi(detectedNote) : null;
   const targetMidi = targetNote ? scientificToMidi(targetNote) : null;
   const isOffTarget = detectedMidi !== null && targetMidi !== null && detectedMidi !== targetMidi;
+  const isOctaveOff = isOffTarget && detectedMidi !== null && targetMidi !== null && Math.abs(detectedMidi - targetMidi) === 12;
   const correctionDirection = isOffTarget
     ? (detectedMidi < targetMidi ? 'up' : 'down')
     : null;
@@ -49,6 +51,7 @@ export function buildLiveSingingFeedback(input: {
     detectedNote,
     targetIndex,
     isOffTarget,
+    isOctaveOff,
     correctionDirection,
   };
 }

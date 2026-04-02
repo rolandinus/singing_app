@@ -2,7 +2,7 @@ import type { Clef, Locale, SkillKey } from '../types';
 
 const TRANSLATIONS = {
   de: {
-    nav_dashboard: 'Dashboard',
+    nav_dashboard: 'Home',
     nav_practice: 'Üben',
     nav_settings: 'Einstellungen',
     nav_debug: 'Debug',
@@ -121,6 +121,8 @@ const TRANSLATIONS = {
     melody_tap_note_hint: 'Tippe eine Note zum Vorhören',
     melody_bpm_decrease: 'Tempo verringern',
     melody_bpm_increase: 'Tempo erhöhen',
+    melody_octave_too_high: 'Du singst eine Oktave zu hoch',
+    melody_octave_too_low: 'Du singst eine Oktave zu tief',
     mic_off_warning: 'Kein Ton erkannt. Ist das Mikrofon stumm oder gesperrt?',
     debug_melody_title: 'Melodie-Debug',
     debug_melody_hint: 'Nimmt direkt auf dieser Seite eine Testmelodie auf und zeigt pro Noten-Slot den erkannten Ton.',
@@ -203,7 +205,7 @@ const TRANSLATIONS = {
     level_detail_sing_melody_5: 'Level 5 – Profi: Umfang C4–A5 / E2–C4, alle Intervalle inkl. Oktave (Stufen 1–8), 6 Noten, Toleranz 30 Cent.',
   },
   en: {
-    nav_dashboard: 'Dashboard',
+    nav_dashboard: 'Home',
     nav_practice: 'Practice',
     nav_settings: 'Settings',
     nav_debug: 'Debug',
@@ -322,6 +324,8 @@ const TRANSLATIONS = {
     melody_tap_note_hint: 'Tap a note to preview',
     melody_bpm_decrease: 'Decrease tempo',
     melody_bpm_increase: 'Increase tempo',
+    melody_octave_too_high: 'You are singing one octave too high',
+    melody_octave_too_low: 'You are singing one octave too low',
     mic_off_warning: 'No pitch detected. Is the microphone muted or blocked?',
     debug_melody_title: 'Melody Debug',
     debug_melody_hint: 'Record a test melody directly on this screen and inspect the detected note for each melody slot.',

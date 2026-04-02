@@ -7,7 +7,7 @@ export function Screen({ children }: { children: React.ReactNode }) {
   const colors = useThemeColors();
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <ScrollView contentContainerStyle={{ padding: 0 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <View style={{ gap: 12 }}>{children}</View>
       </ScrollView>
     </SafeAreaView>

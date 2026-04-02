@@ -7,8 +7,8 @@ describe('melody result notes', () => {
       { noteIndex: 0, detectedMidi: 60, correct: true },
       { noteIndex: 1, detectedMidi: 64, correct: false },
     ], ['quarter', 'half'])).toEqual([
-      { note: 'C4', duration: 'quarter', slotIndex: 0, correct: true },
-      { note: 'E4', duration: 'half', slotIndex: 1, correct: false },
+      { note: 'C4', duration: 'quarter', slotIndex: 0, correct: true, isOctaveOff: false },
+      { note: 'E4', duration: 'half', slotIndex: 1, correct: false, isOctaveOff: false },
     ]);
   });
 
@@ -17,7 +17,7 @@ describe('melody result notes', () => {
       { noteIndex: 0, detectedMidi: null, correct: false },
       { noteIndex: 1, detectedMidi: 62, correct: true },
     ], ['quarter', 'quarter'])).toEqual([
-      { note: 'D4', duration: 'quarter', slotIndex: 1, correct: true },
+      { note: 'D4', duration: 'quarter', slotIndex: 1, correct: true, isOctaveOff: false },
     ]);
   });
 });

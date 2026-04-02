@@ -4,8 +4,26 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
+function noteScore(detectedMidi: number, targetMidi: number, toleranceCents: number): number {
+  if (Math.abs(detectedMidi - targetMidi) === 12) return 0.5;
+  const centsOff = Math.abs((detectedMidi - targetMidi) * 100);
+  return clamp01(1 - centsOff / (toleranceCents * 2));
+}
+
 function noPitchResult(feedback: string): EvaluationResult {
   return { correct: false, score: 0, accuracyDetail: { reason: 'no_pitch' }, feedback, telemetry: {} };
+}
+
+function detectOctaveShift(targetMidis: number[], detectedMidis: Array<number | null>): 'high' | 'low' | null {
+  const pairs = targetMidis
+    .map((target, i) => ({ target, detected: detectedMidis[i] ?? null }))
+    .filter((p): p is { target: number; detected: number } => Number.isFinite(p.detected));
+  if (pairs.length === 0) return null;
+  const highCount = pairs.filter((p) => p.detected - p.target === 12).length;
+  const lowCount = pairs.filter((p) => p.detected - p.target === -12).length;
+  if (highCount > pairs.length / 2) return 'high';
+  if (lowCount > pairs.length / 2) return 'low';
+  return null;
 }
 
 export class ExerciseEvaluator {
@@ -56,14 +74,15 @@ export class ExerciseEvaluator {
         const noteScores = targetMidis.map((targetMidi, idx) => {
           const detectedMidi = normalizedDetected[idx];
           if (!Number.isFinite(detectedMidi)) return 0;
-          const centsOff = (Number(detectedMidi) - targetMidi) * 100;
-          return clamp01(1 - Math.abs(centsOff) / (toleranceCents * 2));
+          return noteScore(Number(detectedMidi), targetMidi, toleranceCents);
         });
         const averageNoteScore = noteScores.reduce((sum, value) => sum + value, 0) / noteScores.length;
         const lengthCoverage = detectedCount / targetMidis.length;
         const score = clamp01(averageNoteScore);
         const correct = score >= minAccuracy;
 
+        const octaveShift = !correct ? detectOctaveShift(targetMidis, normalizedDetected) : null;
+        const octaveHint = octaveShift === 'high' ? ' – Eine Oktave zu hoch' : octaveShift === 'low' ? ' – Eine Oktave zu tief' : '';
         return {
           correct,
           score,
@@ -77,7 +96,7 @@ export class ExerciseEvaluator {
           },
           feedback: correct
             ? `Melodie korrekt (${Math.round(score * 100)}%)`
-            : `Melodie abweichend (${Math.round(score * 100)}%)`,
+            : `Melodie abweichend (${Math.round(score * 100)}%)${octaveHint}`,
           telemetry: {},
         };
       }
@@ -94,21 +113,22 @@ export class ExerciseEvaluator {
       });
 
       const noteScores = targetMidis.map((targetMidi, idx) => {
-        const centsOff = (normalizedDetected[idx] - targetMidi) * 100;
-        return clamp01(1 - Math.abs(centsOff) / (toleranceCents * 2));
+        return noteScore(normalizedDetected[idx], targetMidi, toleranceCents);
       });
       const averageNoteScore = noteScores.reduce((sum, value) => sum + value, 0) / noteScores.length;
       const lengthCoverage = Math.min(detectedMidis.length, targetMidis.length) / Math.max(detectedMidis.length, targetMidis.length);
       const score = clamp01(averageNoteScore * lengthCoverage);
       const correct = score >= minAccuracy;
 
+      const octaveShiftLegacy = !correct ? detectOctaveShift(targetMidis, normalizedDetected) : null;
+      const octaveHintLegacy = octaveShiftLegacy === 'high' ? ' – Eine Oktave zu hoch' : octaveShiftLegacy === 'low' ? ' – Eine Oktave zu tief' : '';
       return {
         correct,
         score,
         accuracyDetail: { targetMidis, detectedMidis, normalizedDetected, minAccuracy, toleranceCents, lengthCoverage },
         feedback: correct
           ? `Melodie korrekt (${Math.round(score * 100)}%)`
-          : `Melodie abweichend (${Math.round(score * 100)}%)`,
+          : `Melodie abweichend (${Math.round(score * 100)}%)${octaveHintLegacy}`,
         telemetry: {},
       };
     }

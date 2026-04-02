@@ -246,7 +246,6 @@ export class AppShell {
 
     const requiredIds = [
       "staffSvg",
-      "recordedStaffSvg",
       "messageBox",
       "detectedNoteDebug",
       "visualMetronomeToggle",
@@ -274,7 +273,6 @@ export class AppShell {
 
     this.melodyTrainer = new SingingTrainerApp({
       staffSvg: melodyDom.staffSvg,
-      recordedStaffSvg: melodyDom.recordedStaffSvg,
       messageBox: melodyDom.messageBox,
       detectedNoteDebug: melodyDom.detectedNoteDebug,
       visualMetronomeToggle: melodyDom.visualMetronomeToggle,

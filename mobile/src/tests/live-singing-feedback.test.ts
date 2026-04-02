@@ -30,6 +30,7 @@ describe('live singing feedback', () => {
       detectedNote: 'A4',
       targetIndex: 0,
       isOffTarget: true,
+      isOctaveOff: false,
       correctionDirection: 'down',
     });
   });
@@ -45,7 +46,38 @@ describe('live singing feedback', () => {
       detectedNote: 'E4',
       targetIndex: 1,
       isOffTarget: false,
+      isOctaveOff: false,
       correctionDirection: null,
+    });
+  });
+
+  it('flags isOctaveOff when detected note is exactly one octave above target', () => {
+    // C5 (midi 72) is one octave above C4 (midi 60)
+    expect(buildLiveSingingFeedback({
+      skillKey: 'sing_melody',
+      isCapturing: true,
+      promptNotes: ['C4', 'D4', 'E4'],
+      singingNoteIndex: 0,
+      frequency: 523.25, // C5
+    })).toMatchObject({
+      isOffTarget: true,
+      isOctaveOff: true,
+      correctionDirection: 'down',
+    });
+  });
+
+  it('flags isOctaveOff when detected note is exactly one octave below target', () => {
+    // C3 (midi 48) is one octave below C4 (midi 60)
+    expect(buildLiveSingingFeedback({
+      skillKey: 'sing_note',
+      isCapturing: true,
+      promptNotes: ['C4'],
+      singingNoteIndex: null,
+      frequency: 130.81, // C3
+    })).toMatchObject({
+      isOffTarget: true,
+      isOctaveOff: true,
+      correctionDirection: 'up',
     });
   });
 });

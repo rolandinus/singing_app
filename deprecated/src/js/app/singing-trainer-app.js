@@ -2,7 +2,6 @@ import {
   AVAILABLE_NOTES_SORTED,
   LINE_SPACING,
   MIDDLE_LINE_D3_Y_GENERATED,
-  MIDDLE_LINE_D3_Y_RECORDED,
   NOTE_COLOR_DEFAULT,
   NOTE_COLOR_WRONG,
   NOTE_PROPERTIES,
@@ -19,6 +18,7 @@ import {
   drawStaffOnSvg,
   getNoteYPosition,
   highlightCurrentNote,
+  markNoteWrong,
 } from "../render/staff.js";
 
 export class SingingTrainerApp {
@@ -58,7 +58,6 @@ export class SingingTrainerApp {
     this.bindEventListeners();
 
     drawStaffOnSvg(this.dom.staffSvg, MIDDLE_LINE_D3_Y_GENERATED);
-    drawStaffOnSvg(this.dom.recordedStaffSvg, MIDDLE_LINE_D3_Y_RECORDED);
 
     this.generateAndDisplayNotes();
     this.dom.messageBox.textContent = "Bereit. Generieren Sie eine Melodie oder starten Sie direkt.";
@@ -301,6 +300,7 @@ export class SingingTrainerApp {
     this.generatedNotes.forEach((note) => {
       const noteWidth = (note.duration === "2n" ? 2 : 1) * widthPerUnit;
       note.xPosition = currentX;
+      note.width = noteWidth;
       currentX += noteWidth;
     });
   }
@@ -310,7 +310,6 @@ export class SingingTrainerApp {
     this.dom.messageBox.textContent = "";
 
     drawStaffOnSvg(this.dom.staffSvg, MIDDLE_LINE_D3_Y_GENERATED);
-    drawStaffOnSvg(this.dom.recordedStaffSvg, MIDDLE_LINE_D3_Y_RECORDED);
 
     this.generatedNotes = [];
     this.recordedNotesDisplay = [];
@@ -612,8 +611,6 @@ export class SingingTrainerApp {
     this.detectedPitchesInSlot = [];
     this.clearLiveFeedbackMarker();
 
-    drawStaffOnSvg(this.dom.recordedStaffSvg, MIDDLE_LINE_D3_Y_RECORDED);
-
     const staffTop = STAFF_MARGIN_TOP - LINE_SPACING;
     const staffBottom = STAFF_MARGIN_TOP + (STAFF_LINES_COUNT - 1) * LINE_SPACING + LINE_SPACING;
     const startX = this.generatedNotes[0].xPosition;
@@ -653,7 +650,8 @@ export class SingingTrainerApp {
         ) * 1000;
 
       const lineStartX = this.generatedNotes[0].xPosition;
-      const lineEndX = this.generatedNotes[this.generatedNotes.length - 1].xPosition;
+      const lastNote = this.generatedNotes[this.generatedNotes.length - 1];
+      const lineEndX = lastNote.xPosition + (lastNote.width ?? 0);
       const travelDistance = lineEndX - lineStartX > 0 ? lineEndX - lineStartX : 1;
       let animationStartTime = null;
 
@@ -765,38 +763,11 @@ export class SingingTrainerApp {
     this.dom.messageBox.textContent = "Aufnahme beendet. Ergebnisse werden angezeigt.";
     this.dom.detectedNoteDebug.textContent = "";
 
-    drawStaffOnSvg(this.dom.recordedStaffSvg, MIDDLE_LINE_D3_Y_RECORDED);
-
-    const availableWidth = SVG_STAFF_WIDTH - (STAFF_MARGIN_LEFT + 100) - STAFF_MARGIN_LEFT;
-    const totalDurationUnits = this.generatedNotes.reduce(
-      (sum, note) => sum + (note.duration === "2n" ? 2 : 1),
-      0,
-    );
-    const widthPerUnit = totalDurationUnits > 0 ? availableWidth / totalDurationUnits : 0;
-
-    let currentX = STAFF_MARGIN_LEFT + 100;
-
     for (let i = 0; i < this.recordedNotesDisplay.length; i += 1) {
       const recordedNote = this.recordedNotesDisplay[i];
-      const originalNote = this.generatedNotes[i];
-      if (!originalNote) {
-        continue;
+      if (recordedNote && recordedNote.color === NOTE_COLOR_WRONG) {
+        markNoteWrong(this.noteElementsArray[i]);
       }
-
-      const noteWidth = (originalNote.duration === "2n" ? 2 : 1) * widthPerUnit;
-      const noteXPosition = currentX;
-
-      if (recordedNote) {
-        drawNoteOnSvg({
-          svgElement: this.dom.recordedStaffSvg,
-          middleLineY: MIDDLE_LINE_D3_Y_RECORDED,
-          noteData: { ...recordedNote, duration: originalNote.duration },
-          xPosition: noteXPosition,
-          noteColor: recordedNote.color,
-        });
-      }
-
-      currentX += noteWidth;
     }
 
     const totalNotes = this.generatedNotes.length;

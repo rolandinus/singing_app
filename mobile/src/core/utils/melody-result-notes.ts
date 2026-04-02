@@ -6,10 +6,11 @@ export type MelodyResultRenderNote = {
   duration: NoteType;
   slotIndex: number;
   correct: boolean;
+  isOctaveOff: boolean;
 };
 
 export function buildMelodyResultRenderNotes(
-  noteResults: Array<{ noteIndex: number; detectedMidi: number | null; correct: boolean }>,
+  noteResults: Array<{ noteIndex: number; detectedMidi: number | null; correct: boolean; isOctaveOff?: boolean }>,
   durations: NoteType[],
 ): MelodyResultRenderNote[] {
   return noteResults
@@ -19,5 +20,6 @@ export function buildMelodyResultRenderNotes(
       duration: durations[result.noteIndex] ?? 'quarter',
       slotIndex: result.noteIndex,
       correct: result.correct,
+      isOctaveOff: result.isOctaveOff ?? false,
     }));
 }

@@ -16,7 +16,7 @@ type NoteRenderOptions = {
   layoutNoteCount?: number;
 };
 
-function yForScientific(scientific: string, clef: 'treble' | 'bass'): number {
+export function yForScientific(scientific: string, clef: 'treble' | 'bass'): number {
   const anchor = clef === 'bass' ? 'D3' : 'B4';
   const order = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 
@@ -38,9 +38,12 @@ export function buildStaffNodes(clef: 'treble' | 'bass', color: string = '#0f172
   const nodes = [];
   for (let i = 0; i < STAFF_LINES_COUNT; i += 1) {
     const y = STAFF_MARGIN_TOP + i * LINE_SPACING;
-    nodes.push(line({ x1: STAFF_MARGIN_LEFT, y1: y, x2: SVG_STAFF_WIDTH - STAFF_MARGIN_LEFT, y2: y, stroke: color, 'stroke-width': 1 }));
+    nodes.push(line({ x1: STAFF_MARGIN_LEFT, y1: y, x2: SVG_STAFF_WIDTH - STAFF_MARGIN_LEFT, y2: y, stroke: color, 'stroke-width': LINE_SPACING / 15 }));
   }
-  nodes.push(text({ x: STAFF_MARGIN_LEFT + 24, y: clef === 'bass' ? 78 : 93, 'font-size': clef === 'bass' ? 56 : 64, fill: color }, clef === 'bass' ? '𝄢' : '𝄞'));
+  const clefX = STAFF_MARGIN_LEFT + LINE_SPACING * 1.6;
+  const clefY = clef === 'bass' ? LINE_SPACING * 5.2 : LINE_SPACING * 6.2;
+  const clefFontSize = clef === 'bass' ? LINE_SPACING * (56 / 15) : LINE_SPACING * (64 / 15);
+  nodes.push(text({ x: clefX, y: clefY, 'font-size': clefFontSize, fill: color }, clef === 'bass' ? '𝄢' : '𝄞'));
   return nodes;
 }
 
@@ -54,6 +57,13 @@ export function buildStaffNodes(clef: 'treble' | 'bass', color: string = '#0f172
  * @param highlightIndex - Index of the note to highlight (e.g. during capture).
  * @param durations - Optional per-note durations; defaults to 'quarter' for all notes.
  */
+export function xForSlot(slotIndex: number, layoutNoteCount: number): number {
+  const startX = STAFF_MARGIN_LEFT + LINE_SPACING * 6;
+  const availableWidth = SVG_STAFF_WIDTH - startX - STAFF_MARGIN_LEFT;
+  const step = layoutNoteCount > 1 ? Math.min(availableWidth / (layoutNoteCount - 1), 180) : 0;
+  return startX + slotIndex * step;
+}
+
 export function buildNoteNodes(
   notes: string[],
   clef: 'treble' | 'bass',
@@ -63,15 +73,12 @@ export function buildNoteNodes(
   defaultColor: string = '#0f172a',
 ): ModelNode[] {
   if (!notes.length) return [];
-  const startX = STAFF_MARGIN_LEFT + 110;
-  const availableWidth = SVG_STAFF_WIDTH - startX - STAFF_MARGIN_LEFT;
   const layoutNoteCount = options?.layoutNoteCount ?? notes.length;
-  const step = layoutNoteCount > 1 ? Math.min(availableWidth / (layoutNoteCount - 1), 180) : 0;
   const stemHeight = LINE_SPACING * 3;
 
   return notes.map((scientific, index) => {
     const slotIndex = options?.slotIndices?.[index] ?? index;
-    const x = startX + slotIndex * step;
+    const x = xForSlot(slotIndex, layoutNoteCount);
     const y = yForScientific(scientific, clef);
     const isHighlighted = highlightIndex !== null && index === highlightIndex;
     const isHalf = (durations?.[index] ?? 'quarter') === 'half';
@@ -79,8 +86,8 @@ export function buildNoteNodes(
 
     const fillColor = style?.fill ?? (isHighlighted ? '#2563eb' : defaultColor);
     const strokeColor = style?.stroke ?? (isHighlighted ? '#2563eb' : defaultColor);
-    const rx = style?.rx ?? (isHighlighted ? 8 : 6.5);
-    const ry = style?.ry ?? (isHighlighted ? 6 : 5);
+    const rx = style?.rx ?? (isHighlighted ? LINE_SPACING * (8 / 15) : LINE_SPACING * (13 / 30));
+    const ry = style?.ry ?? (isHighlighted ? LINE_SPACING * 0.4 : LINE_SPACING / 3);
 
     if (isHalf) {
       const notehead = ellipse({ cx: x, cy: y, rx, ry, fill: 'transparent', stroke: strokeColor, 'stroke-width': 1.5 });

@@ -112,6 +112,7 @@ export default function PracticeScreen() {
       detectedNote: null,
       targetIndex: null,
       isOffTarget: false,
+      isOctaveOff: false,
       correctionDirection: null,
     };
   const lastAutoPlayedIntervalId = React.useRef<string | null>(null);
@@ -437,8 +438,10 @@ export default function PracticeScreen() {
                   noteResults={melodyNoteResults}
                   recordingProgress={melodyRecordingProgress}
                   singingNoteIndex={singingNoteIndex}
-                  liveDetectedNote={liveSingingFeedback.isOffTarget ? liveSingingFeedback.detectedNote : null}
+                  correctionDirection={liveSingingFeedback.isOffTarget ? liveSingingFeedback.correctionDirection : null}
                   liveDetectedNoteIndex={liveSingingFeedback.isOffTarget ? liveSingingFeedback.targetIndex : null}
+                  liveOctaveWarning={liveSingingFeedback.isOctaveOff ? (liveSingingFeedback.correctionDirection === 'down' ? 'high' : 'low') : null}
+                  liveIsOnTarget={!liveSingingFeedback.isOffTarget && liveSingingFeedback.detectedNote !== null}
                   feedback={feedback}
                   loadingPlay={loading.playPrompt}
                   loadingCapture={loading.captureSingingAttempt}

@@ -4,6 +4,7 @@ import {
   LINE_SPACING,
   MIDDLE_LINE_D3_Y_GENERATED,
   NOTE_COLOR_DEFAULT,
+  NOTE_COLOR_WRONG,
   NOTE_HEAD_RX,
   NOTE_HEAD_RY,
   NOTE_HIGHLIGHT_COLOR,
@@ -323,7 +324,7 @@ export function buildRenderedNoteModel({
       y2: stemY2,
       stroke: noteColor,
       "stroke-width": "1.5",
-    }),
+    }, { dataset: { notePart: "stem" } }),
   );
 
   const noteLetter = noteData.scientific.slice(0, 1);
@@ -390,6 +391,15 @@ export function highlightCurrentNote(noteElementsArray, index) {
     const isHalfNote = ellipseElement.getAttribute("fill") === "white";
     ellipseElement.setAttribute("fill", isHalfNote ? "white" : NOTE_COLOR_DEFAULT);
     ellipseElement.setAttribute("stroke", NOTE_COLOR_DEFAULT);
+
+    const stemLine = noteElement.querySelector("[data-note-part='stem']");
+    if (stemLine) {
+      stemLine.setAttribute("stroke", NOTE_COLOR_DEFAULT);
+    }
+
+    noteElement.querySelectorAll("text").forEach((textEl) => {
+      textEl.setAttribute("fill", NOTE_COLOR_DEFAULT);
+    });
   });
 
   if (index < 0 || index >= noteElementsArray.length || !noteElementsArray[index]) {
@@ -410,4 +420,28 @@ export function highlightCurrentNote(noteElementsArray, index) {
   if (!isHalfNote) {
     ellipseElement.setAttribute("fill", NOTE_HIGHLIGHT_COLOR);
   }
+}
+
+export function markNoteWrong(noteElement) {
+  if (!noteElement) {
+    return;
+  }
+
+  const ellipseElement = noteElement.querySelector("ellipse");
+  if (ellipseElement) {
+    const isHalfNote = ellipseElement.getAttribute("fill") === "white";
+    if (!isHalfNote) {
+      ellipseElement.setAttribute("fill", NOTE_COLOR_WRONG);
+    }
+    ellipseElement.setAttribute("stroke", NOTE_COLOR_WRONG);
+  }
+
+  const stemLine = noteElement.querySelector("[data-note-part='stem']");
+  if (stemLine) {
+    stemLine.setAttribute("stroke", NOTE_COLOR_WRONG);
+  }
+
+  noteElement.querySelectorAll("text").forEach((textEl) => {
+    textEl.setAttribute("fill", NOTE_COLOR_WRONG);
+  });
 }

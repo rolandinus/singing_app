@@ -80,6 +80,7 @@ export type MelodyNoteResult = {
   detectedMidi: number | null;
   correct: boolean;
   score: number;
+  isOctaveOff: boolean;
 };
 
 export type MelodyCaptureAttemptOutcome = {
@@ -109,11 +110,12 @@ export function computeMelodyNoteResults(
   return targetMidis.map((targetMidi, i) => {
     const detectedMidi = normalizedDetected[i] ?? null;
     if (detectedMidi === null || !Number.isFinite(detectedMidi)) {
-      return { noteIndex: i, targetMidi, detectedMidi: null, correct: false, score: 0 };
+      return { noteIndex: i, targetMidi, detectedMidi: null, correct: false, score: 0, isOctaveOff: false };
     }
     const centsOff = Math.abs((detectedMidi - targetMidi) * 100);
-    const score = Math.max(0, Math.min(1, 1 - centsOff / (toleranceCents * 2)));
-    return { noteIndex: i, targetMidi, detectedMidi, correct: centsOff <= toleranceCents, score };
+    const isOctaveOff = Math.abs(detectedMidi - targetMidi) === 12;
+    const score = isOctaveOff ? 0.5 : Math.max(0, Math.min(1, 1 - centsOff / (toleranceCents * 2)));
+    return { noteIndex: i, targetMidi, detectedMidi, correct: centsOff <= toleranceCents, score, isOctaveOff };
   });
 }
 
