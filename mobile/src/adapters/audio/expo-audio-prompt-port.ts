@@ -1,20 +1,13 @@
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import { buildMetronomeClickWavDataUri, buildSynthToneWavDataUri } from './synth-tone';
 
-function scientificToMidi(note: string): number {
+function noteToFrequency(note: string): number {
   const match = /^([A-G])(#?)(-?\d+)$/.exec(String(note).trim());
-  if (!match) {
-    return 60;
-  }
-
+  if (!match) return 440 * 2 ** ((60 - 69) / 12);
   const [, letter, sharp, octaveRaw] = match;
-  const octave = Number(octaveRaw);
   const offsets: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
   const semitone = (offsets[letter] ?? 0) + (sharp ? 1 : 0);
-  return (octave + 1) * 12 + semitone;
-}
-
-function midiToFrequency(midi: number): number {
+  const midi = (Number(octaveRaw) + 1) * 12 + semitone;
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
@@ -64,10 +57,7 @@ export class ExpoAudioPromptPort {
   private stopGeneration = 0;
 
   private async ensureAudioMode() {
-    if (ExpoAudioPromptPort.configured) {
-      return;
-    }
-
+    if (ExpoAudioPromptPort.configured) return;
     await setAudioModeAsync({
       allowsRecording: false,
       playsInSilentMode: true,
@@ -75,31 +65,24 @@ export class ExpoAudioPromptPort {
       shouldRouteThroughEarpiece: false,
       interruptionMode: 'duckOthers',
     });
-
     ExpoAudioPromptPort.configured = true;
   }
 
-  private async playTone(note: string, durationMs = 650): Promise<boolean> {
-    const generation = this.stopGeneration;
-    const midi = scientificToMidi(note);
-    const frequency = midiToFrequency(midi);
-    const uri = buildSynthToneWavDataUri(frequency, durationMs);
-
-    // Abort immediately if stop() was called since this playback was requested.
+  private async playAudioUri(uri: string, durationMs: number, generation: number): Promise<boolean> {
     if (generation !== this.stopGeneration) return false;
-
     const player = createAudioPlayer({ uri });
     this.activePlayer = player;
     player.play();
     await waitForPlayerCompletion(player, durationMs, () => generation !== this.stopGeneration);
-    try {
-      player.remove();
-    } catch {}
-    if (this.activePlayer === player) {
-      this.activePlayer = null;
-    }
-    // Return false if a stop() was issued while this tone was playing.
+    try { player.remove(); } catch {}
+    if (this.activePlayer === player) this.activePlayer = null;
     return generation === this.stopGeneration;
+  }
+
+  private async playTone(note: string, durationMs = 650): Promise<boolean> {
+    const generation = this.stopGeneration;
+    const uri = buildSynthToneWavDataUri(noteToFrequency(note), durationMs);
+    return this.playAudioUri(uri, durationMs, generation);
   }
 
   async playInterval(first: string, second: string): Promise<void> {
@@ -133,16 +116,13 @@ export class ExpoAudioPromptPort {
   async playMelody(notes: string[]): Promise<void> {
     await this.stop();
     await this.ensureAudioMode();
-    const sequence = Array.isArray(notes) ? notes : [];
     const gen = this.stopGeneration;
-
-    for (let i = 0; i < sequence.length; i += 1) {
+    for (let i = 0; i < notes.length; i += 1) {
       if (this.stopGeneration !== gen) return;
-      const ok = await this.playTone(String(sequence[i]));
+      const ok = await this.playTone(notes[i]);
       if (!ok) return;
-      if (i < sequence.length - 1) {
+      if (i < notes.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 140));
-        // Check again after the gap in case stop() was called during the pause.
         if (this.stopGeneration !== gen) return;
       }
     }
@@ -156,16 +136,12 @@ export class ExpoAudioPromptPort {
     await this.stop();
     await this.ensureAudioMode();
     const gen = this.stopGeneration;
-
     for (let i = 0; i < notes.length; i += 1) {
       if (this.stopGeneration !== gen) return;
-      const noteObj = notes[i];
-      if (!noteObj) continue;
-      const ok = await this.playTone(noteObj.pitch, noteObj.durationMs);
+      const ok = await this.playTone(notes[i].pitch, notes[i].durationMs);
       if (!ok) return;
       if (i < notes.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, gapMs));
-        // Check again after the gap in case stop() was called during the pause.
         if (this.stopGeneration !== gen) return;
       }
     }
@@ -174,43 +150,22 @@ export class ExpoAudioPromptPort {
   async playMetronomeTick(accent = false, durationMs = 90): Promise<void> {
     await this.stop();
     await this.ensureAudioMode();
-
     // Use a MembraneSynth-style exponential pitch-sweep click, matching the
     // browser app (Tone.js MembraneSynth: pitchDecay=0.008, octaves=2).
     // Base frequency: C5 (~523 Hz) for accented beat 1, C4 (~262 Hz) otherwise.
     const baseFreq = accent ? 523.25 : 261.63;
     const safeDurationMs = Math.max(60, durationMs);
     const uri = buildMetronomeClickWavDataUri(baseFreq, accent, safeDurationMs);
-
-    const generation = this.stopGeneration;
-    if (generation !== this.stopGeneration) return;
-
-    const player = createAudioPlayer({ uri });
-    this.activePlayer = player;
-    player.play();
-    await waitForPlayerCompletion(player, safeDurationMs, () => generation !== this.stopGeneration);
-    try {
-      player.remove();
-    } catch {}
-    if (this.activePlayer === player) {
-      this.activePlayer = null;
-    }
+    await this.playAudioUri(uri, safeDurationMs, this.stopGeneration);
   }
 
   async stop(): Promise<void> {
     // Increment the generation counter so any in-progress playTone call knows to abort.
     this.stopGeneration += 1;
-
     const player = this.activePlayer;
     this.activePlayer = null;
-
     if (!player) return;
-
-    try {
-      player.pause();
-    } catch {}
-    try {
-      player.remove();
-    } catch {}
+    try { player.pause(); } catch {}
+    try { player.remove(); } catch {}
   }
 }

@@ -23,18 +23,15 @@ function yForScientific(scientific: string, clef: 'treble' | 'bass'): number {
   const parse = (value: string) => {
     const m = /^([A-G])([#b]?)(\d)$/.exec(value);
     if (!m) return null;
-    const letter = m[1];
-    const octave = Number(m[3]);
-    return octave * 7 + order.indexOf(letter);
+    return Number(m[3]) * 7 + order.indexOf(m[1]);
   };
 
   const a = parse(anchor);
   const b = parse(scientific);
-  if (a === null || b === null) return STAFF_MARGIN_TOP + 2 * LINE_SPACING;
-
-  const yFactor = b - a;
   const middleLineY = STAFF_MARGIN_TOP + 2 * LINE_SPACING;
-  return middleLineY - yFactor * (LINE_SPACING / 2);
+  if (a === null || b === null) return middleLineY;
+
+  return middleLineY - (b - a) * (LINE_SPACING / 2);
 }
 
 export function buildStaffNodes(clef: 'treble' | 'bass', color: string = '#0f172a') {
@@ -50,7 +47,7 @@ export function buildStaffNodes(clef: 'treble' | 'bass', color: string = '#0f172
 /**
  * Build note nodes for rendering on the staff.
  * Quarter notes are rendered as filled ellipses.
- * Half notes are rendered as hollow ellipses (open noteheads) with an upward stem.
+ * Half notes are rendered as hollow ellipses with an upward stem.
  *
  * @param notes - Array of scientific pitch names (e.g. 'C4', 'G5').
  * @param clef - Clef used to compute vertical position.
@@ -68,7 +65,7 @@ export function buildNoteNodes(
   if (!notes.length) return [];
   const startX = STAFF_MARGIN_LEFT + 110;
   const availableWidth = SVG_STAFF_WIDTH - startX - STAFF_MARGIN_LEFT;
-  const layoutNoteCount = Math.max(notes.length, options?.layoutNoteCount ?? notes.length);
+  const layoutNoteCount = options?.layoutNoteCount ?? notes.length;
   const step = layoutNoteCount > 1 ? Math.min(availableWidth / (layoutNoteCount - 1), 180) : 0;
   const stemHeight = LINE_SPACING * 3;
 
@@ -77,36 +74,17 @@ export function buildNoteNodes(
     const x = startX + slotIndex * step;
     const y = yForScientific(scientific, clef);
     const isHighlighted = highlightIndex !== null && index === highlightIndex;
-    const duration = durations?.[index] ?? 'quarter';
-    const isHalf = duration === 'half';
-    const style = options?.noteStyles?.[index] ?? null;
+    const isHalf = (durations?.[index] ?? 'quarter') === 'half';
+    const style = options?.noteStyles?.[index];
 
     const fillColor = style?.fill ?? (isHighlighted ? '#2563eb' : defaultColor);
     const strokeColor = style?.stroke ?? (isHighlighted ? '#2563eb' : defaultColor);
-
     const rx = style?.rx ?? (isHighlighted ? 8 : 6.5);
     const ry = style?.ry ?? (isHighlighted ? 6 : 5);
 
-    // Half note: hollow notehead (fill = white/transparent) + upward stem.
-    // Quarter note: filled notehead, no stem.
     if (isHalf) {
-      const notehead = ellipse({
-        cx: x,
-        cy: y,
-        rx,
-        ry,
-        fill: 'transparent',
-        stroke: strokeColor,
-        'stroke-width': 1.5,
-      });
-      const stem = line({
-        x1: x + rx,
-        y1: y,
-        x2: x + rx,
-        y2: y - stemHeight,
-        stroke: strokeColor,
-        'stroke-width': 1.5,
-      });
+      const notehead = ellipse({ cx: x, cy: y, rx, ry, fill: 'transparent', stroke: strokeColor, 'stroke-width': 1.5 });
+      const stem = line({ x1: x + rx, y1: y, x2: x + rx, y2: y - stemHeight, stroke: strokeColor, 'stroke-width': 1.5 });
       return group([notehead, stem]);
     }
 

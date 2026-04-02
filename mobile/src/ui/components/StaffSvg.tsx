@@ -34,20 +34,17 @@ function yForScientific(scientific: string, clef: 'treble' | 'bass'): number {
   const order = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 
   const parse = (value: string) => {
-    const match = /^([A-G])([#b]?)(\d)$/.exec(value);
+    const match = /^([A-G])[#b]?(\d)$/.exec(value);
     if (!match) return null;
-    const letter = match[1];
-    const octave = Number(match[3]);
-    return octave * 7 + order.indexOf(letter);
+    return Number(match[2]) * 7 + order.indexOf(match[1]);
   };
 
   const anchorValue = parse(anchor);
   const noteValue = parse(scientific);
   if (anchorValue === null || noteValue === null) return STAFF_MARGIN_TOP + 2 * LINE_SPACING;
 
-  const yFactor = noteValue - anchorValue;
   const middleLineY = STAFF_MARGIN_TOP + 2 * LINE_SPACING;
-  return middleLineY - yFactor * (LINE_SPACING / 2);
+  return middleLineY - (noteValue - anchorValue) * (LINE_SPACING / 2);
 }
 
 function xForSlot(slotIndex: number, layoutNoteCount: number): number {
@@ -76,12 +73,15 @@ export function StaffSvg({
   overlayDirection?: 'up' | 'down' | null;
   singleNoteLayout?: boolean;
 }) {
-  const colors = useThemeColors();
-  const noteColor = colors.textPrimary;
-  const promptNoteOptions = singleNoteLayout && notes.length === 1
-    ? { noteStyles: [{ rx: 10, ry: 8 }] }
-    : undefined;
-  const noteNodes = buildNoteNodes(notes, clef, highlightIndex ?? null, undefined, promptNoteOptions, noteColor);
+  const noteColor = useThemeColors().textPrimary;
+  const noteNodes = buildNoteNodes(
+    notes,
+    clef,
+    highlightIndex ?? null,
+    undefined,
+    singleNoteLayout && notes.length === 1 ? { noteStyles: [{ rx: 10, ry: 8 }] } : undefined,
+    noteColor,
+  );
   const overlayLayoutCount = overlayIndex != null ? Math.max(notes.length, overlayIndex + 1) : notes.length;
   const overlayNodes = overlayNote && overlayIndex != null
     ? buildNoteNodes(
@@ -104,24 +104,23 @@ export function StaffSvg({
     : [];
   const nodes = [...buildStaffNodes(clef, noteColor), ...noteNodes, ...overlayNodes];
   const tree = toReactNativeSvgTree(nodes);
-  const arrowX = overlayNote && overlayIndex != null ? xForSlot(overlayIndex, overlayLayoutCount) : null;
-  const arrowY = overlayNote && overlayIndex != null ? yForScientific(overlayNote, clef) : null;
-  const directionArrow = overlayDirection === 'up' ? '↑' : overlayDirection === 'down' ? '↓' : null;
-  const svgHeight = singleNoteLayout ? 132 : 160;
+  const showArrow = overlayNote && overlayIndex != null && overlayDirection != null;
 
   return (
-    <Svg width="100%" height={svgHeight} viewBox={`0 0 ${SVG_STAFF_WIDTH} ${SVG_STAFF_HEIGHT}`}>
+    <Svg width="100%" height={singleNoteLayout ? 132 : 160} viewBox={`0 0 ${SVG_STAFF_WIDTH} ${SVG_STAFF_HEIGHT}`}>
       {tree.map((node, index) => renderNode(node, String(index)))}
-      {directionArrow && arrowX != null && arrowY != null ? (
+      {showArrow ? (
         <SvgText
-          x={arrowX}
-          y={overlayDirection === 'up' ? arrowY - 18 : arrowY + 24}
+          x={xForSlot(overlayIndex!, overlayLayoutCount)}
+          y={overlayDirection === 'up'
+            ? yForScientific(overlayNote!, clef) - 18
+            : yForScientific(overlayNote!, clef) + 24}
           fill="#dc2626"
           fontSize={18}
           fontWeight="700"
           textAnchor="middle"
         >
-          {directionArrow}
+          {overlayDirection === 'up' ? '↑' : '↓'}
         </SvgText>
       ) : null}
     </Svg>

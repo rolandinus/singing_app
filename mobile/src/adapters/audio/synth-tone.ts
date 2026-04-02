@@ -59,28 +59,20 @@ function harmonicGainFor(frequency: number, harmonic: number): number {
   return base + boost * lowBoost;
 }
 
-function bodyGainForFrequency(frequency: number): number {
-  const lowBoost = clamp((240 - frequency) / 160, 0, 1);
-  const highTrim = clamp((frequency - 660) / 880, 0, 1) * 0.08;
-  return 0.72 + lowBoost * 0.26 - highTrim;
-}
-
-function attackBrightness(time: number): number {
-  if (time >= 0.06) return 0;
-  return 1 - time / 0.06;
-}
-
 export function renderSynthTonePcm(frequency: number, durationMs = 650): Int16Array {
   const safeFrequency = clamp(frequency, 40, 2_000);
   const durationSeconds = Math.max(durationMs, 80) / 1000;
   const sampleCount = Math.max(1, Math.floor(durationSeconds * SAMPLE_RATE));
   const pcm = new Int16Array(sampleCount);
 
+  const lowBoost = clamp((240 - safeFrequency) / 160, 0, 1);
+  const highTrim = clamp((safeFrequency - 660) / 880, 0, 1) * 0.08;
+  const bodyGain = 0.72 + lowBoost * 0.26 - highTrim;
+
   for (let i = 0; i < sampleCount; i += 1) {
     const time = i / SAMPLE_RATE;
     const envelope = envelopeAt(time, durationSeconds);
-    const bodyGain = bodyGainForFrequency(safeFrequency);
-    const brightness = attackBrightness(time);
+    const brightness = time < 0.06 ? 1 - time / 0.06 : 0;
 
     let sample = 0;
     for (let harmonic = 1; harmonic <= 6; harmonic += 1) {
@@ -109,7 +101,6 @@ export function renderSynthTonePcm(frequency: number, durationMs = 650): Int16Ar
  *   pitchDecay 0.008 s, octaves 2, attack 0.001 s, decay 0.3 s
  */
 export function renderMetronomeClickPcm(baseFrequency: number, accent = false, durationMs = 90): Int16Array {
-  // Accent ticks are slightly louder and use a higher base frequency.
   const freq = clamp(baseFrequency, 40, 4_000);
   const octaves = 2;
   const durationSeconds = Math.max(60, durationMs) / 1000;
@@ -120,41 +111,31 @@ export function renderMetronomeClickPcm(baseFrequency: number, accent = false, d
   const sampleCount = Math.ceil(durationSeconds * SAMPLE_RATE);
   const pcm = new Int16Array(sampleCount);
 
-  // Phase accumulator so we correctly integrate the time-varying frequency.
   let phase = 0;
 
   for (let i = 0; i < sampleCount; i += 1) {
     const t = i / SAMPLE_RATE;
 
-    // ---- Amplitude envelope (attack → exponential decay) ----
+    // Amplitude envelope: attack → exponential decay
     let amp: number;
     if (t < attackTime) {
       amp = t / attackTime;
     } else {
-      const decayT = t - attackTime;
-      // Exponential decay: e^(-k*t) where k chosen so amplitude ≈ 0 at decayTime.
       const k = 10 / decayTime;
-      amp = Math.exp(-k * decayT);
+      amp = Math.exp(-k * (t - attackTime));
     }
 
-    // ---- Instantaneous frequency: exponential pitch sweep ----
-    // At t=0 → freq * 2^octaves, decays to freq over pitchDecay seconds.
+    // Instantaneous frequency: exponential pitch sweep
     // f(t) = freq * 2^(octaves * e^(-t/pitchDecay))
     const freqNow = freq * Math.pow(2, octaves * Math.exp(-t / pitchDecay));
-
-    // Accumulate phase (Euler integration).
     phase += (2 * Math.PI * freqNow) / SAMPLE_RATE;
 
-    // ---- Oscillator + transient noise click ----
     const osc = Math.sin(phase);
-
-    // Short noise transient in the first 4 ms for a crisper click attack.
     const noiseAmt = t < 0.004 ? (1 - t / 0.004) * 0.35 : 0;
     const noise = (Math.random() * 2 - 1) * noiseAmt;
 
     const gain = accent ? 0.82 : 0.65;
-    const raw = (osc + noise) * amp * gain;
-    pcm[i] = Math.round(clamp(Math.tanh(raw * 1.1), -1, 1) * MAX_INT16);
+    pcm[i] = Math.round(clamp(Math.tanh((osc + noise) * amp * gain * 1.1), -1, 1) * MAX_INT16);
   }
 
   return pcm;
@@ -162,7 +143,6 @@ export function renderMetronomeClickPcm(baseFrequency: number, accent = false, d
 
 function buildWavDataUri(pcmSamples: Int16Array): string {
   const dataSize = pcmSamples.length * CHANNELS * 2;
-  const fileSize = 36 + dataSize;
   const buffer = new ArrayBuffer(44 + dataSize);
   const view = new DataView(buffer);
 
@@ -175,7 +155,7 @@ function buildWavDataUri(pcmSamples: Int16Array): string {
   };
 
   writeString('RIFF');
-  view.setUint32(offset, fileSize, true); offset += 4;
+  view.setUint32(offset, 36 + dataSize, true); offset += 4;
   writeString('WAVE');
   writeString('fmt ');
   view.setUint32(offset, 16, true); offset += 4;
@@ -189,7 +169,7 @@ function buildWavDataUri(pcmSamples: Int16Array): string {
   view.setUint32(offset, dataSize, true); offset += 4;
 
   for (let i = 0; i < pcmSamples.length; i += 1) {
-    view.setInt16(offset, pcmSamples[i] ?? 0, true);
+    view.setInt16(offset, pcmSamples[i], true);
     offset += 2;
   }
 
