@@ -222,6 +222,17 @@ export class SessionService {
   };
   private pitchCapturePort: {
     ensureMicrophonePermission?: () => Promise<void>;
+    prepareForRecording?: () => Promise<void>;
+    /** Start recording before the count-in. Returns the wall-clock ms when recording began. */
+    startCaptureEarly?: () => Promise<number>;
+    /** Finish an early-started capture. Sleeps remaining time, stops, returns contour with preRoll offset applied. */
+    finishCapture?: (captureDurationMs: number, segmentMs: number, preRollMs: number) => Promise<{
+      detectedMidis: number[];
+      detectedFrequencies: number[];
+      segmentDurationMs?: number;
+      detectedMidisBySegment?: Array<number | null>;
+      detectedFrequenciesBySegment?: Array<number | null>;
+    } | null>;
     capturePitchSample: (durationMs: number) => Promise<{
       detectedFrequency: number;
       detectedMidi: number;
@@ -256,6 +267,15 @@ export class SessionService {
     stop: () => Promise<void>;
   }, pitchCapturePort?: {
     ensureMicrophonePermission?: () => Promise<void>;
+    prepareForRecording?: () => Promise<void>;
+    startCaptureEarly?: () => Promise<number>;
+    finishCapture?: (captureDurationMs: number, segmentMs: number, preRollMs: number) => Promise<{
+      detectedMidis: number[];
+      detectedFrequencies: number[];
+      segmentDurationMs?: number;
+      detectedMidisBySegment?: Array<number | null>;
+      detectedFrequenciesBySegment?: Array<number | null>;
+    } | null>;
     capturePitchSample: (durationMs: number) => Promise<{
       detectedFrequency: number;
       detectedMidi: number;
@@ -582,6 +602,7 @@ export class SessionService {
     if (exercise.skillKey !== 'sing_melody') return null;
 
     await this.pitchCapturePort.ensureMicrophonePermission?.();
+    await this.pitchCapturePort.prepareForRecording?.();
 
     const targetMidis = Array.isArray((exercise.expectedAnswer as any).targetMidis)
       ? ((exercise.expectedAnswer as any).targetMidis as number[])
@@ -590,15 +611,34 @@ export class SessionService {
     const beats = Math.max(1, totalMelodyBeats(melodyNoteObjects));
     const toleranceCents = this.toleranceForLevel(exercise.level);
     const timing = buildMelodyTimingModel(options.bpm ?? DEFAULT_MELODY_BPM, beats);
+    const tickDurationMs = Math.min(120, Math.max(60, Math.round(timing.noteDurationMs * 0.18)));
 
-    if (options.onCountInBeat) {
-      const tickDurationMs = Math.min(120, Math.max(60, Math.round(timing.noteDurationMs * 0.18)));
-      for (let beat = 1; beat <= COUNT_IN_BEATS; beat += 1) {
-        options.onCountInBeat(beat);
-        await this.audioPromptPort.playMetronomeTick?.(beat === 1, tickDurationMs);
-        await new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, timing.noteDurationMs - tickDurationMs)));
-      }
+    // Start recording before the count-in so the native session is definitely active
+    // when the cursor begins. recordingStartedAt is null on web (early capture no-op).
+    const recordingStartedAt = this.pitchCapturePort.startCaptureEarly
+      ? await this.pitchCapturePort.startCaptureEarly()
+      : null;
+
+    // Schedule all count-in beats at absolute offsets from t0.
+    // This prevents per-beat drift accumulation vs the old sequential await approach.
+    const t0 = Date.now();
+    for (let beat = 1; beat <= COUNT_IN_BEATS; beat += 1) {
+      const beatOffsetMs = (beat - 1) * timing.noteDurationMs;
+      setTimeout(() => {
+        options.onCountInBeat?.(beat);
+        void this.audioPromptPort.playMetronomeTick?.(beat === 1, tickDurationMs);
+      }, beatOffsetMs);
     }
+
+    // Wait for all count-in beats to complete.
+    await new Promise<void>((resolve) => setTimeout(resolve, COUNT_IN_BEATS * timing.noteDurationMs));
+
+    // cursorStartsAt is the absolute wall-clock time the cursor and singing begin.
+    // preRollMs is how many ms of recorded audio precede cursor t=0.
+    const cursorStartsAt = t0 + COUNT_IN_BEATS * timing.noteDurationMs;
+    const preRollMs = recordingStartedAt != null && recordingStartedAt > 0
+      ? Math.max(0, cursorStartsAt - recordingStartedAt)
+      : 0;
 
     const noteTimers: ReturnType<typeof setTimeout>[] = [];
     options.onRecordingStarted?.();
@@ -619,7 +659,9 @@ export class SessionService {
       detectedFrequenciesBySegment?: Array<number | null>;
     } | null = null;
     try {
-      contour = await this.pitchCapturePort.capturePitchContour(timing.captureDurationMs, timing.segmentMs);
+      contour = this.pitchCapturePort.finishCapture
+        ? await this.pitchCapturePort.finishCapture(timing.captureDurationMs, timing.segmentMs, preRollMs)
+        : await this.pitchCapturePort.capturePitchContour(timing.captureDurationMs, timing.segmentMs);
     } finally {
       noteTimers.forEach(clearTimeout);
     }

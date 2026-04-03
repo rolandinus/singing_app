@@ -238,12 +238,21 @@ function buildPitchContourResult(
   };
 }
 
+type EarlyCaptureState = {
+  startedAt: number;
+  timeline: PitchTimelinePoint[];
+  startRecordingResult: StudioStartRecordingResult;
+  audioDataSub: { remove: () => void } | null;
+  audioAnalysisSub: { remove: () => void } | null;
+};
+
 export class ExpoPitchCapturePort {
   /** True while a native streaming session is active. */
   private nativeStreaming = false;
   private debugListener: PitchCaptureDebugListener = null;
   private autoCorrelationSampleCounter = 0;
   private studioPitchSampleCounter = 0;
+  private earlyCapture: EarlyCaptureState | null = null;
 
   setDebugListener(listener: PitchCaptureDebugListener): void {
     this.debugListener = listener;
@@ -274,6 +283,23 @@ export class ExpoPitchCapturePort {
       }
     }
     this.emitDebug({ phase: 'request_permission', message: 'permission_granted' });
+  }
+
+  /**
+   * Pre-warm the native audio session: check permissions and configure audio mode.
+   * Call this before the count-in so the setup latency is paid before recording starts.
+   * No-op on web.
+   */
+  async prepareForRecording(): Promise<void> {
+    if (Platform.OS === 'web') return;
+    await this.ensurePermissions();
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
+      shouldRouteThroughEarpiece: false,
+      interruptionMode: 'duckOthers',
+    });
   }
 
   /**
@@ -327,14 +353,7 @@ export class ExpoPitchCapturePort {
     }
 
     await this.stop();
-    await this.ensurePermissions();
-    await setAudioModeAsync({
-      allowsRecording: true,
-      playsInSilentMode: true,
-      shouldPlayInBackground: false,
-      shouldRouteThroughEarpiece: false,
-      interruptionMode: 'duckOthers',
-    });
+    // permissions and audio mode are pre-called via prepareForRecording() before count-in
 
     const studioPitchRealtimeTimeline: PitchTimelinePoint[] = [];
     let startedAt: number | null = null;
@@ -444,6 +463,7 @@ export class ExpoPitchCapturePort {
       });
     });
 
+    let stopRecordingResult: StudioRecordingResult | null = null;
     try {
       // Start recording — no onAudioStream callback in options.
       // Data arrives via the EventEmitter listeners set up above.
@@ -468,26 +488,33 @@ export class ExpoPitchCapturePort {
 
       startedAt = Date.now();
       this.emitDebug({ phase: 'recording', isRecording: true, message: 'recording_started' });
+
+      await sleep(durationMs);
     } catch (error) {
-      console.error('[pitch:start] error recording audio', error)
+      if (startRecordingResult === null) {
+        // start itself failed — nothing to stop
+        console.error('[pitch:start] error recording audio', error);
+        this.emitDebug({
+          phase: 'error',
+          detector: 'studio_pitch',
+          message: error instanceof Error && error.message
+            ? `studio_pitch_start_failed:${error.message}`
+            : 'studio_pitch_start_failed',
+        });
+      }
+      throw error;
+    } finally {
       this.nativeStreaming = false;
       audioDataSub?.remove();
       audioAnalysisSub?.remove();
-      this.emitDebug({
-        phase: 'error',
-        detector: 'studio_pitch',
-        message: error instanceof Error && error.message
-          ? `studio_pitch_start_failed:${error.message}`
-          : 'studio_pitch_start_failed',
-      });
-      throw error;
+      if (startRecordingResult !== null) {
+        try {
+          stopRecordingResult = await studioStopRecording();
+        } catch (stopError) {
+          console.log('[pitch:stop] failed to stop recording cleanly', stopError);
+        }
+      }
     }
-
-    await sleep(durationMs);
-
-    this.nativeStreaming = false;
-    audioDataSub?.remove();
-    audioAnalysisSub?.remove();
 
     this.emitDebug({
       phase: 'recording',
@@ -496,13 +523,6 @@ export class ExpoPitchCapturePort {
         ? `studio_pitch_realtime_samples:${studioPitchRealtimeTimeline.length}`
         : 'studio_pitch_listener_unavailable',
     });
-
-    let stopRecordingResult: StudioRecordingResult | null = null;
-    try {
-      stopRecordingResult = await studioStopRecording();
-    } catch (error) {
-      console.log('[pitch:stop] failed to stop recording cleanly', error);
-    }
 
     const recording: StudioRecordingResult | null = stopRecordingResult
       ? { ...stopRecordingResult, fileUri: stopRecordingResult.fileUri ?? startRecordingResult?.fileUri }
@@ -821,7 +841,166 @@ export class ExpoPitchCapturePort {
     return this.extractStudioPitchTimeline({ fileUri: uri }, segmentMs);
   }
 
+  /**
+   * Start recording before the count-in so the native audio session is definitely
+   * active when the cursor begins. Call this before scheduling the count-in, then
+   * call finishCapture() after the count-in completes.
+   *
+   * Returns the wall-clock timestamp (ms) when recording actually started, which
+   * the caller uses to compute preRollMs.
+   *
+   * No-op on web (returns 0).
+   */
+  async startCaptureEarly(): Promise<number> {
+    if (Platform.OS === 'web' || !studioStartRecording || !studioStopRecording) return 0;
+
+    await this.stop();
+
+    const timeline: PitchTimelinePoint[] = [];
+    let startedAt = 0;
+    // These are captured by the closures below and mutated by audioDataSub.
+    let lastNativeChunkStartMs: number | null = null;
+    let lastNativeChunkDurationMs: number | null = null;
+    this.studioPitchSampleCounter = 0;
+    this.nativeStreaming = true;
+
+    const audioDataSub = studioAddAudioDataListener?.((event: StudioAudioDataEvent) => {
+      if (!this.nativeStreaming || startedAt === 0) return;
+      const deltaBytes = Number.isFinite(event.deltaSize) ? Math.max(0, Number(event.deltaSize)) : 0;
+      lastNativeChunkStartMs = Number.isFinite(event.position)
+        ? Math.max(0, Number(event.position))
+        : Date.now() - startedAt;
+      lastNativeChunkDurationMs = deltaBytes > 0 ? (deltaBytes / (44100 * 2)) * 1000 : 0;
+    }) ?? null;
+
+    const audioAnalysisSub = studioAddAudioAnalysisListener?.((event: StudioAudioAnalysisEvent) => {
+      if (!this.nativeStreaming || startedAt === 0) return;
+      const callbackElapsed = Date.now() - startedAt;
+      const eventSegmentMs = Math.max(1, Number(event.segmentDurationMs ?? 100));
+      const analysisDurationMs = Math.max(
+        eventSegmentMs,
+        Number.isFinite(event.durationMs)
+          ? Number(event.durationMs)
+          : eventSegmentMs * Math.max(1, readStudioDataPoints(event).length),
+      );
+      const latestChunkEndMs = lastNativeChunkStartMs != null
+        ? lastNativeChunkStartMs + (lastNativeChunkDurationMs ?? 0)
+        : callbackElapsed;
+      const analysisChunkStartMs = Math.max(0, latestChunkEndMs - analysisDurationMs);
+      const points = readStudioDataPoints(event);
+      points.forEach((point, index) => {
+        const frequency = readStudioPitchHz(point);
+        if (frequency == null || frequency < 50 || frequency > 1200) return;
+        this.studioPitchSampleCounter += 1;
+        const fallbackRelativeMs = index * eventSegmentMs;
+        const relativeStartMs = typeof point.startTime === 'number'
+          ? normalizeStudioTimeMs(point.startTime, fallbackRelativeMs)
+          : typeof point.endTime === 'number'
+            ? Math.max(0, normalizeStudioTimeMs(point.endTime, fallbackRelativeMs + eventSegmentMs) - eventSegmentMs)
+            : fallbackRelativeMs;
+        timeline.push({ timeMs: Math.round(analysisChunkStartMs + relativeStartMs), frequency });
+      });
+    }) ?? null;
+
+    try {
+      const startRecordingResult = await studioStartRecording({
+        sampleRate: 44100,
+        encoding: 'pcm_16bit',
+        channels: 1,
+        interval: 46,
+        intervalAnalysis: 46,
+        enableProcessing: true,
+        features: { pitch: true },
+        output: { primary: { enabled: true, format: 'wav' } },
+      });
+      startedAt = Date.now();
+      this.earlyCapture = { startedAt, timeline, startRecordingResult, audioDataSub, audioAnalysisSub };
+      this.emitDebug({ phase: 'recording', isRecording: true, message: 'early_capture_started' });
+      return startedAt;
+    } catch (error) {
+      this.nativeStreaming = false;
+      audioDataSub?.remove();
+      audioAnalysisSub?.remove();
+      console.error('[pitch:startCaptureEarly] studioStartRecording failed', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Complete a recording started with startCaptureEarly().
+   *
+   * Sleeps until the full capture window (preRollMs + captureDurationMs) has elapsed
+   * since recording started, then stops and returns the pitch contour with timestamps
+   * shifted so that t=0 corresponds to cursor start (not recording start).
+   *
+   * preRollMs = cursorStartsAt - recordingStartedAt
+   */
+  async finishCapture(
+    captureDurationMs: number,
+    segmentMs: number,
+    preRollMs: number,
+  ): Promise<{
+    detectedMidis: number[];
+    detectedFrequencies: number[];
+    segmentDurationMs?: number;
+    detectedMidisBySegment?: Array<number | null>;
+    detectedFrequenciesBySegment?: Array<number | null>;
+  } | null> {
+    const capture = this.earlyCapture;
+    if (!capture) return null;
+    this.earlyCapture = null;
+
+    // Sleep until the full recording window has elapsed.
+    const recordEndAt = capture.startedAt + Math.max(0, preRollMs) + captureDurationMs;
+    const remainingMs = recordEndAt - Date.now();
+    if (remainingMs > 0) await sleep(remainingMs);
+
+    // Stop recording.
+    this.nativeStreaming = false;
+    capture.audioDataSub?.remove();
+    capture.audioAnalysisSub?.remove();
+    let stopRecordingResult: StudioRecordingResult | null = null;
+    if (studioStopRecording) {
+      try {
+        stopRecordingResult = await studioStopRecording();
+      } catch (stopError) {
+        console.log('[pitch:finishCapture] studioStopRecording failed', stopError);
+      }
+    }
+
+    // Shift timeline so t=0 is cursor start, discard pre-roll and post-capture samples.
+    const safePreRollMs = Math.max(0, preRollMs);
+    let timeline = capture.timeline
+      .map((p) => ({ timeMs: p.timeMs - safePreRollMs, frequency: p.frequency }))
+      .filter((p) => p.timeMs >= 0 && p.timeMs < captureDurationMs);
+
+    // Fallback: post-recording file analysis if real-time path collected nothing.
+    if (timeline.length === 0) {
+      const fileUri = stopRecordingResult?.fileUri ?? capture.startRecordingResult.fileUri;
+      if (fileUri) {
+        const rawTimeline = await this.extractStudioPitchTimeline({ fileUri }, segmentMs);
+        timeline = rawTimeline
+          .map((p) => ({ timeMs: p.timeMs - safePreRollMs, frequency: p.frequency }))
+          .filter((p) => p.timeMs >= 0 && p.timeMs < captureDurationMs);
+      }
+    }
+
+    this.emitDebug({
+      phase: 'analysis_complete',
+      timelinePoints: timeline.length,
+      message: timeline.length > 0 ? 'early_capture_finished' : 'early_capture_finished_without_pitch',
+    });
+
+    if (timeline.length === 0) return null;
+    return buildPitchContourResult(timeline, captureDurationMs, segmentMs);
+  }
+
   async stop(): Promise<void> {
+    if (this.earlyCapture) {
+      this.earlyCapture.audioDataSub?.remove();
+      this.earlyCapture.audioAnalysisSub?.remove();
+      this.earlyCapture = null;
+    }
     if (this.nativeStreaming) {
       this.nativeStreaming = false;
       if (studioStopRecording) {

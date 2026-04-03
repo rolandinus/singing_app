@@ -127,21 +127,55 @@ export class ExpoAudioPromptPort {
 
   /**
    * Play a melody with per-note durations and a configurable gap between notes.
-   * Respects stop() cancellation between every note and every gap.
+   *
+   * All notes are scheduled at absolute offsets from a single t0 so inter-note
+   * timing does not accumulate drift from playback completion events.
+   * WAV URIs are pre-built before scheduling to avoid per-note build latency.
+   * Respects stop() cancellation.
    */
   async playMelodyWithDurations(notes: Array<{ pitch: string; durationMs: number }>, gapMs: number): Promise<void> {
     await this.stop();
     await this.ensureAudioMode();
     const gen = this.stopGeneration;
+    if (notes.length === 0) return;
+
+    // Build all WAV buffers upfront so setTimeout callbacks are fast.
+    const uris = notes.map((n) => buildSynthToneWavDataUri(noteToFrequency(n.pitch), n.durationMs));
+
+    const t0 = Date.now();
+    let offsetMs = 0;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
     for (let i = 0; i < notes.length; i += 1) {
-      if (this.stopGeneration !== gen) return;
-      const ok = await this.playTone(notes[i].pitch, notes[i].durationMs);
-      if (!ok) return;
-      if (i < notes.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, gapMs));
+      const noteOffsetMs = offsetMs;
+      const uri = uris[i];
+      const noteDurationMs = notes[i].durationMs;
+      timers.push(setTimeout(() => {
         if (this.stopGeneration !== gen) return;
-      }
+        const player = createAudioPlayer({ uri });
+        this.activePlayer = player;
+        player.play();
+        // Schedule player cleanup after the note finishes.
+        setTimeout(() => {
+          try { player.remove(); } catch {}
+          if (this.activePlayer === player) this.activePlayer = null;
+        }, noteDurationMs + 300);
+      }, noteOffsetMs));
+      offsetMs += noteDurationMs + (i < notes.length - 1 ? gapMs : 0);
     }
+
+    // offsetMs now equals the total melody duration (end of last note).
+    // Poll until done or cancelled.
+    const endAt = t0 + offsetMs + 200;
+    await new Promise<void>((resolve) => {
+      const poll = setInterval(() => {
+        if (this.stopGeneration !== gen || Date.now() >= endAt) {
+          clearInterval(poll);
+          timers.forEach(clearTimeout);
+          resolve();
+        }
+      }, 50);
+    });
   }
 
   async playMetronomeTick(accent = false, durationMs = 90): Promise<void> {
