@@ -439,6 +439,7 @@ export default function PracticeScreen() {
                   recordingProgress={melodyRecordingProgress}
                   singingNoteIndex={singingNoteIndex}
                   correctionDirection={liveSingingFeedback.isOffTarget ? liveSingingFeedback.correctionDirection : null}
+                  liveDetectedNote={liveSingingFeedback.isOffTarget ? liveSingingFeedback.detectedNote : null}
                   liveDetectedNoteIndex={liveSingingFeedback.isOffTarget ? liveSingingFeedback.targetIndex : null}
                   liveOctaveWarning={liveSingingFeedback.isOctaveOff ? (liveSingingFeedback.correctionDirection === 'down' ? 'high' : 'low') : null}
                   liveIsOnTarget={!liveSingingFeedback.isOffTarget && liveSingingFeedback.detectedNote !== null}

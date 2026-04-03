@@ -6,7 +6,7 @@ import { COUNT_IN_BEATS, getMelodyNoteObjects, noteBeats } from '../../core/serv
 import type { MelodyNoteResult } from '../../core/services/session-service';
 import { t, type TranslationKey } from '../../core/i18n/translator';
 import type { Clef, Exercise, MelodyNote, NoteType } from '../../core/types';
-import { buildNoteNodes, buildStaffNodes, yForScientific } from '../../core/render/staff-builder';
+import { buildNoteNodes, buildStaffNodes, NOTE_SLOTS_START_X, yForScientific } from '../../core/render/staff-builder';
 import { buildMelodyResultRenderNotes } from '../../core/utils/melody-result-notes';
 import { toReactNativeSvgTree, type SvgDescriptor } from '../../core/render/rn-svg-renderer';
 import { useThemeColors } from '../hooks/use-theme-colors';
@@ -40,6 +40,7 @@ function TappableStaff({
   durations,
   highlightIndex,
   correctionDirection,
+  liveDetectedNote,
   overlayIndex,
   noteResults,
   renderedNotes,
@@ -53,6 +54,7 @@ function TappableStaff({
   durations?: NoteType[];
   highlightIndex?: number | null;
   correctionDirection?: 'up' | 'down' | null;
+  liveDetectedNote?: string | null;
   overlayIndex?: number | null;
   noteResults?: MelodyNoteResult[];
   renderedNotes?: Array<{ note: string; duration: NoteType; slotIndex: number; correct: boolean; isOctaveOff: boolean }>;
@@ -88,13 +90,16 @@ function TappableStaff({
   const slotIndices = useDurationWeightedLayout
     ? renderedPitchNotes.map((note) => beatOffsetByNoteIndex[note.slotIndex] ?? note.slotIndex)
     : renderedPitchNotes.map((note) => note.slotIndex);
+  // Use totalBeatSlots + 1 as layoutNoteCount so the last note is not at the right edge of
+  // the staff, leaving one beat-slot of room for the cursor to travel past the final note.
+  const layoutNoteCount = totalBeatSlots + 1;
   const noteNodes = buildNoteNodes(
     renderedPitchNotes.map((note) => note.note),
     clef,
     highlightIndex ?? null,
     renderedPitchNotes.map((note) => note.duration),
     {
-      layoutNoteCount: totalBeatSlots,
+      layoutNoteCount,
       slotIndices,
       noteStyles: renderedNotes
         ? renderedPitchNotes.map((note) => {
@@ -112,7 +117,7 @@ function TappableStaff({
       null,
       incorrectOverlays.map((o) => o.duration),
       {
-        layoutNoteCount: totalBeatSlots,
+        layoutNoteCount,
         slotIndices: incorrectOverlays.map((o) => beatOffsetByNoteIndex[o.slotIndex] ?? o.slotIndex),
         noteStyles: incorrectOverlays.map((o) => {
           const c = o.isOctaveOff ? '#f97316' : '#dc2626';
@@ -125,15 +130,17 @@ function TappableStaff({
   const staffNodes = buildStaffNodes(clef, noteColor);
   const tree = toReactNativeSvgTree([...staffNodes, ...noteNodes, ...incorrectOverlayNodes]);
 
-  const NOTE_START_X = STAFF_MARGIN_LEFT + 110;
+  // NOTE_SLOTS_START_X matches xForSlot's startX so the cursor aligns with note positions.
+  const NOTE_START_X = NOTE_SLOTS_START_X;
   const availableWidth = SVG_STAFF_WIDTH - NOTE_START_X - STAFF_MARGIN_LEFT;
-  const NOTE_SPACING = totalBeatSlots > 1 ? Math.min(availableWidth / (totalBeatSlots - 1), 180) : 0;
+  // Dividing by totalBeatSlots (= layoutNoteCount - 1) means one beat-slot of padding exists
+  // after the last note, so the cursor can travel past it when progress reaches 1.
+  const NOTE_SPACING = totalBeatSlots > 0 ? Math.min(availableWidth / totalBeatSlots, 180) : 0;
   const TAP_HALF_WIDTH = 22;
   const normalizedProgress = recordingProgress == null ? null : Math.max(0, Math.min(1, recordingProgress));
-  const maxBeatIndex = Math.max(0, totalBeatSlots - 1);
-  // Map progress to beat index space (0..totalBeatSlots), then clamp to rendered slots.
+  // Cursor travels from beat 0 (first note) to beat totalBeatSlots (end of last note).
   const cursorBeatPosition = normalizedProgress == null ? null : normalizedProgress * totalBeatSlots;
-  const cursorX = cursorBeatPosition == null ? null : NOTE_START_X + Math.min(cursorBeatPosition, maxBeatIndex) * NOTE_SPACING;
+  const cursorX = cursorBeatPosition == null ? null : NOTE_START_X + cursorBeatPosition * NOTE_SPACING;
   const cursorTopY = STAFF_MARGIN_TOP - 14;
   const cursorBottomY = STAFF_MARGIN_TOP + (LINE_SPACING * 4) + 14;
 
@@ -176,12 +183,18 @@ function TappableStaff({
               position: 'absolute',
               top: arrowY * scale,
               left: `${(noteX / SVG_STAFF_WIDTH) * 100}%` as any,
-              transform: [{ translateX: -10 }],
+              transform: [{ translateX: -14 }],
+              alignItems: 'center',
             }}
           >
             <Text style={{ color: '#dc2626', fontSize: 20, fontWeight: '700', lineHeight: 24 }}>
               {correctionDirection === 'up' ? '↑' : '↓'}
             </Text>
+            {liveDetectedNote ? (
+              <Text style={{ color: '#dc2626', fontSize: 11, fontWeight: '700', lineHeight: 14 }}>
+                {liveDetectedNote}
+              </Text>
+            ) : null}
           </View>
         );
       })() : null}
@@ -286,6 +299,7 @@ type Props = {
   recordingProgress: number | null;
   singingNoteIndex: number | null;
   correctionDirection?: 'up' | 'down' | null;
+  liveDetectedNote?: string | null;
   liveDetectedNoteIndex?: number | null;
   liveOctaveWarning?: 'high' | 'low' | null;
   liveIsOnTarget?: boolean;
@@ -310,6 +324,7 @@ export function MelodyTrainerPanel({
   recordingProgress,
   singingNoteIndex,
   correctionDirection,
+  liveDetectedNote,
   liveDetectedNoteIndex,
   liveOctaveWarning,
   liveIsOnTarget,
@@ -333,16 +348,20 @@ export function MelodyTrainerPanel({
   const renderedResultNotes = buildMelodyResultRenderNotes(noteResults, durations);
 
   const [latchedOctaveWarning, setLatchedOctaveWarning] = React.useState<'high' | 'low' | null>(null);
+  const prevOctaveWarning = React.useRef<'high' | 'low' | null>(null);
   React.useEffect(() => {
     if (!isCapturing) {
       setLatchedOctaveWarning(null);
+      prevOctaveWarning.current = null;
       return;
     }
-    if (liveOctaveWarning) {
+    if (liveOctaveWarning && liveOctaveWarning === prevOctaveWarning.current) {
+      // Only show warning after two consecutive analysis points agree on the same octave direction
       setLatchedOctaveWarning(liveOctaveWarning);
     } else if (liveIsOnTarget) {
       setLatchedOctaveWarning(null);
     }
+    prevOctaveWarning.current = liveOctaveWarning ?? null;
   }, [isCapturing, liveOctaveWarning, liveIsOnTarget]);
 
   return (
@@ -363,6 +382,7 @@ export function MelodyTrainerPanel({
         durations={durations}
         highlightIndex={isCapturing && countInBeat === null ? singingNoteIndex : null}
         correctionDirection={isCapturing ? correctionDirection : null}
+        liveDetectedNote={isCapturing ? liveDetectedNote : null}
         overlayIndex={liveDetectedNoteIndex}
         recordingProgress={isCapturing && countInBeat === null ? recordingProgress : null}
         noteResults={hasResult ? noteResults : undefined}
@@ -410,6 +430,30 @@ export function MelodyTrainerPanel({
           {feedback.text}
         </Text>
       ) : null}
+
+      {/* Detail hint when correct but not 100%: show which notes were imperfect */}
+      {feedback.isCorrect && noteResults.length > 0 && noteResults.some((r) => r.score < 1) ? (() => {
+        const perfectCount = noteResults.filter((r) => r.score === 1).length;
+        const total = noteResults.length;
+        const imperfect = noteResults
+          .map((r, i) => ({ ...r, position: i + 1 }))
+          .filter((r) => r.score < 1);
+        const hints = imperfect.map((r) => {
+          if (r.detectedMidi === null) return `Note ${r.position}: nicht erkannt`;
+          if (r.isOctaveOff) return `Note ${r.position}: Oktave versetzt`;
+          return `Note ${r.position}: Tonhöhe abweichend (${Math.round(r.score * 100)}%)`;
+        });
+        return (
+          <View style={{ backgroundColor: colors.noteResultOkBg, borderRadius: 8, padding: 8, gap: 2 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: colors.success }}>
+              {perfectCount}/{total} Noten perfekt
+            </Text>
+            {hints.map((hint, i) => (
+              <Text key={i} style={{ fontSize: 12, color: colors.textSecondary }}>• {hint}</Text>
+            ))}
+          </View>
+        );
+      })() : null}
 
       {/* Control buttons */}
       <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
@@ -465,10 +509,10 @@ export function MelodyTrainerPanel({
               paddingHorizontal: 8,
               backgroundColor: isCapturing ? '#dc2626' : colors.amber,
             },
-            loadingPlay && { opacity: 0.45 },
+            (loadingPlay || feedback.isCorrect) && { opacity: 0.45 },
           ]}
           onPress={isCapturing ? onStop : onRecord}
-          disabled={loadingPlay}
+          disabled={loadingPlay || feedback.isCorrect}
           accessibilityRole="button"
           accessibilityLabel={isCapturing ? t(locale, 'melody_stop') : t(locale, 'melody_record')}
         >

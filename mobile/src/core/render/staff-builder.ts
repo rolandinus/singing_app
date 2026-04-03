@@ -57,8 +57,11 @@ export function buildStaffNodes(clef: 'treble' | 'bass', color: string = '#0f172
  * @param highlightIndex - Index of the note to highlight (e.g. during capture).
  * @param durations - Optional per-note durations; defaults to 'quarter' for all notes.
  */
+// X position of the first note slot — shared with cursor calculations in MelodyTrainerPanel.
+export const NOTE_SLOTS_START_X = STAFF_MARGIN_LEFT + LINE_SPACING * 6;
+
 export function xForSlot(slotIndex: number, layoutNoteCount: number): number {
-  const startX = STAFF_MARGIN_LEFT + LINE_SPACING * 6;
+  const startX = NOTE_SLOTS_START_X;
   const availableWidth = SVG_STAFF_WIDTH - startX - STAFF_MARGIN_LEFT;
   const step = layoutNoteCount > 1 ? Math.min(availableWidth / (layoutNoteCount - 1), 180) : 0;
   return startX + slotIndex * step;
@@ -89,12 +92,37 @@ export function buildNoteNodes(
     const rx = style?.rx ?? (isHighlighted ? LINE_SPACING * (8 / 15) : LINE_SPACING * (13 / 30));
     const ry = style?.ry ?? (isHighlighted ? LINE_SPACING * 0.4 : LINE_SPACING / 3);
 
+    // Detect accidental in the note name (e.g. 'C#4' or 'Bb3').
+    const accidentalMatch = /^[A-G]([#b])/.exec(scientific);
+    const accidentalChar = accidentalMatch ? accidentalMatch[1] : null;
+    const accidentalGlyph = accidentalChar === '#' ? '♯' : accidentalChar === 'b' ? '♭' : null;
+
+    const noteChildren: ModelNode[] = [];
+
     if (isHalf) {
-      const notehead = ellipse({ cx: x, cy: y, rx, ry, fill: 'transparent', stroke: strokeColor, 'stroke-width': 1.5 });
-      const stem = line({ x1: x + rx, y1: y, x2: x + rx, y2: y - stemHeight, stroke: strokeColor, 'stroke-width': 1.5 });
-      return group([notehead, stem]);
+      noteChildren.push(ellipse({ cx: x, cy: y, rx, ry, fill: 'transparent', stroke: strokeColor, 'stroke-width': 1.5 }));
+      noteChildren.push(line({ x1: x + rx, y1: y, x2: x + rx, y2: y - stemHeight, stroke: strokeColor, 'stroke-width': 1.5 }));
+    } else {
+      noteChildren.push(ellipse({ cx: x, cy: y, rx, ry, fill: fillColor, stroke: strokeColor, 'stroke-width': 1.5 }));
     }
 
-    return ellipse({ cx: x, cy: y, rx, ry, fill: fillColor, stroke: strokeColor, 'stroke-width': 1.5 });
+    // Render an accidental glyph to the left of the note head so the user can
+    // distinguish a half-tone mistake from a correct note at the same staff position.
+    if (accidentalGlyph) {
+      const accidentalFontSize = LINE_SPACING * 1.2;
+      const accidentalX = x - rx - accidentalFontSize * 0.6;
+      const accidentalY = y + accidentalFontSize * 0.35;
+      noteChildren.push(
+        text(
+          { x: accidentalX, y: accidentalY, 'font-size': accidentalFontSize, fill: strokeColor, 'text-anchor': 'middle' },
+          accidentalGlyph,
+        ),
+      );
+    }
+
+    if (noteChildren.length === 1 && !accidentalGlyph) {
+      return noteChildren[0];
+    }
+    return group(noteChildren);
   });
 }

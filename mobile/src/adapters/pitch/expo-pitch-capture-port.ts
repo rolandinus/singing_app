@@ -898,7 +898,16 @@ export class ExpoPitchCapturePort {
           : typeof point.endTime === 'number'
             ? Math.max(0, normalizeStudioTimeMs(point.endTime, fallbackRelativeMs + eventSegmentMs) - eventSegmentMs)
             : fallbackRelativeMs;
-        timeline.push({ timeMs: Math.round(analysisChunkStartMs + relativeStartMs), frequency });
+        const pointTimeMs = Math.round(analysisChunkStartMs + relativeStartMs);
+        timeline.push({ timeMs: pointTimeMs, frequency });
+        this.emitDebug({
+          phase: 'analysis_sample',
+          detector: 'studio_pitch',
+          frequency,
+          sampleTimeMs: pointTimeMs,
+          timelinePoints: timeline.length,
+          message: 'studio_pitch_realtime',
+        });
       });
     }) ?? null;
 
